@@ -18,7 +18,9 @@ Jede Route wird bis zum Ziel verfolgt und mit **Proxmox** (LXC + VMs) und **Dock
 - **Anordnen** (✥): Kacheln und Proxmox-Hosts per Drag & Drop in Kategorien verschieben, Kategorien umbenennen,
   sortieren, anlegen und leere entfernen. Auf dem Handy mit ↑/↓ und Kategorie-Auswahl. Gespeichert in `/data/layout.json`
 - **Mobil**: kompakter Header, Suche in eigener Zeile, Statusleiste in drei Spalten, Dialoge in voller Breite
-- **Eigene Einträge** über „+ Eintrag“ (bearbeiten per ✎ auf der Kachel), gespeichert im Volume `/data/custom.json`
+- **Ausblenden**: jede Kachel (auch Proxmox-Hosts und eigene Einträge) über das durchgestrichene Auge; unten unter
+  „Ausgeblendet“ wieder einblenden
+- **Eigene Einträge** über „+ Eintrag“ (bearbeiten per ✎ auf der Kachel), gespeichert in `./data`
 - Suche mit `/`, `Enter` öffnet den ersten Treffer
 - Nur Python-Standardbibliothek, Image ~50 MB, alle Quellen nur lesend
 
@@ -31,6 +33,21 @@ docker compose up -d --build
 ```
 
 Dann `http://<host>:8080` öffnen.
+
+## Daten & Sicherung
+
+Alles, was du im Panel einstellst (Anordnung, Anpassungen, Ausgeblendetes, eigene Einträge, Alarme), liegt im Ordner
+**`./data`** neben der `docker-compose.yml`. Der Container setzt die Rechte beim Start selbst (`PUID`/`PGID`,
+Standard 1000). Den Ordner einfach mitsichern, oder unten im Panel **Sicherung → Export/Import**
+(der Telegram-Token wird nicht exportiert).
+
+Ist `/data` nicht beschreibbar, zeigt das Panel oben eine rote Warnung, und jede fehlgeschlagene Änderung wird gemeldet.
+
+**Umstieg von älteren Versionen** (Daten lagen im Docker-Volume `proxylink_proxylink-data`):
+
+```bash
+mkdir -p data && docker run --rm -v proxylink_proxylink-data:/from -v "$PWD/data":/to alpine cp -a /from/. /to/
+```
 
 ## Konfiguration (`.env`)
 

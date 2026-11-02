@@ -8,14 +8,10 @@ services:
     env_file: .env
     volumes:
       - ./config:/config:ro
-      - proxylink-data:/data        # eigene Einträge (custom.json)
+      # Alle Einstellungen (Anordnung, Anpassungen, eigene Einträge, Alarme) liegen hier auf dem Host.
+      # Der Container setzt die Rechte beim Start selbst – einfach den Ordner sichern.
+      - ./data:/data
       # Lokaler Docker-Host (nur lesend). Für Docker auf anderen Hosts siehe README.
       - /var/run/docker.sock:/var/run/docker.sock:ro
       # Optional, falls /mnt/share kein Proxmox-Storage ist (dann LOCAL_DISKS=share=/mnt/share):
       # - /mnt/share:/mnt/share:ro
-    # Container braucht Lesezugriff auf den Socket (GID der docker-Gruppe auf dem Host):
-    group_add:
-      - "${DOCKER_GID:-999}"
-
-volumes:
-  proxylink-data:

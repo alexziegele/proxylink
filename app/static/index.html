@@ -83,7 +83,7 @@
   #status { margin-bottom: 8px; }
   body.arranging .card, body.arranging .node { cursor: grab; border-style: dashed; border-color: var(--accent); }
   body.arranging a.main { pointer-events: none; }
-  body.arranging .edit, body.arranging .addrs { display: none; }
+  body.arranging .tools, body.arranging .addrs, body.arranging .nhide { display: none; }
   body.arranging .grid, body.arranging .sgrid { min-height: 64px; padding: 6px; margin: -6px; border-radius: 12px;
     outline: 1px dashed var(--line); outline-offset: -1px; }
   .dragging { opacity: .35; }
@@ -106,10 +106,23 @@
   .dot.up { background: var(--up); } .dot.warn { background: var(--warn); } .dot.down { background: var(--down); }
   .sw { width: 24px; height: 14px; border-radius: 7px; background: var(--sw); position: relative; }
   .sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 50%; background: #fff; }
-  .edit { position: absolute; right: 6px; top: 26px; background: none; border: 0; color: var(--muted); cursor: pointer;
-          font-size: 14px; padding: 2px 4px; opacity: 0; transition: opacity .12s; }
-  .card:hover .edit, .edit:focus-visible { opacity: 1; }
-  .edit:hover { color: var(--accent); }
+  .tools { position: absolute; right: 5px; top: 24px; display: flex; flex-direction: column; gap: 1px;
+           opacity: 0; transition: opacity .12s; }
+  .card:hover .tools, .tools:focus-within, .node:hover .nhide, .nhide:focus-visible { opacity: 1; }
+  .tools button, .nhide { background: none; border: 0; color: var(--muted); cursor: pointer; padding: 3px 4px;
+                          font-size: 14px; line-height: 1; border-radius: 5px; display: grid; place-items: center; }
+  .tools button:hover, .nhide:hover { color: var(--accent); background: var(--chip); }
+  .tools svg, .nhide svg { width: 15px; height: 15px; }
+  .nhide { opacity: 0; margin-left: 4px; transition: opacity .12s; }
+
+  /* Ausgeblendet */
+  .hbox { margin-top: 34px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); }
+  .hbox summary { cursor: pointer; padding: 11px 14px; color: var(--muted); font-size: 13.5px; list-style: none; }
+  .hbox summary::-webkit-details-marker { display: none; }
+  .hbox summary::before { content: "▸ "; } .hbox[open] summary::before { content: "▾ "; }
+  .hrow { display: flex; align-items: center; gap: 12px; padding: 8px 14px; border-top: 1px solid var(--line); }
+  .hrow .tx { min-width: 0; flex: 1; }
+  .hrow .btn { padding: 5px 12px; font-size: 13px; min-height: 0; }
   .addrs { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 12px 10px 62px; }
   .cp { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace;
         color: var(--muted); background: var(--chip); border: 1px solid transparent; border-radius: 5px; padding: 2px 6px; cursor: pointer; }
@@ -147,9 +160,9 @@
     .mv select { flex: 1; min-width: 0; height: 34px; padding: 0 8px; }
     .handle, .h-desk { display: none; }
     .h-touch { display: inline; }
-    .edit { opacity: 1; }
+    .tools, .nhide { opacity: 1; }
   }
-  @media (hover: none) { .edit { opacity: .8; } }
+  @media (hover: none) { .tools, .nhide { opacity: .85; } }
 
   /* Mobil */
   @media (max-width: 720px) {
@@ -177,6 +190,15 @@
     .bar { margin-top: 4px; }
     .bar .v small { display: none; }
   }
+
+  /* Hinweise */
+  #storage-warn { background: color-mix(in srgb, var(--down) 14%, transparent); color: var(--down); border-radius: 8px;
+                  padding: 10px 12px; font-size: 13.5px; margin-bottom: 14px; }
+  #toast { position: fixed; left: 50%; bottom: 22px; transform: translate(-50%, 20px); opacity: 0; pointer-events: none;
+           background: var(--text); color: var(--bg); padding: 9px 16px; border-radius: 9px; font-size: 14px;
+           transition: opacity .18s, transform .18s; z-index: 50; max-width: calc(100vw - 24px); }
+  #toast.on { opacity: 1; transform: translate(-50%, 0); }
+  #toast.err { background: var(--down); color: #fff; }
 
   /* Dialog */
   dialog { border: 1px solid var(--line); border-radius: 12px; background: var(--card); color: var(--text);
@@ -215,14 +237,18 @@
     <button class="btn" id="add" title="Eigenen Eintrag hinzufügen">+<span class="bl"> Eintrag</span></button>
     <input id="search" type="search" placeholder="Suchen…  ( / )" autocomplete="off">
   </header>
+  <div id="storage-warn" hidden></div>
   <div id="arrange-hint"><span class="h-desk">Kacheln und Proxmox-Hosts per Drag &amp; Drop in andere Kategorien ziehen,
     Kategorien am ⠿ verschieben, Namen direkt umbenennen. Mit „Fertig“ beenden.</span><span class="h-touch">Mit ↑ ↓ verschieben,
     Kategorie über die Auswahl wechseln, Namen antippen zum Umbenennen. Mit ✓ beenden.</span></div>
   <div id="status"></div>
   <div id="view"></div>
+  <div id="hidden-box"></div>
   <div id="msg"></div>
   <footer><span id="upd"></span> · <button id="reload">jetzt neu laden</button>
-    <span id="hid-wrap" hidden> · <button id="toggle-hidden"></button></span></footer>
+    · Sicherung: <a href="/api/backup" download style="color:var(--accent)">Export</a> ·
+    <button id="import-btn">Import</button><input type="file" id="import-file" accept="application/json,.json" hidden></footer>
+  <div id="toast" role="status" aria-live="polite"></div>
 </main>
 
 <dialog id="dlg">
@@ -288,7 +314,7 @@ let D = { links: [], services: [], guests: [], containers: [], sources: {} };
 const ls = { get(k) { try { return localStorage.getItem("proxylink." + k); } catch { return null; } },
              set(k, v) { try { localStorage.setItem("proxylink." + k, v); } catch {} } };
 let view = ls.get("view") || "links";
-let showHidden = false;
+let hboxOpen = false;
 let S = null; // Proxmox-Status
 
 /* Icons: Name aus dashboard-icons, URL oder automatisch (Name/Subdomain), Fallback Buchstabe */
@@ -315,6 +341,7 @@ function esc(s) { return String(s ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;',
 const multiPve = () => (D.sources?.proxmox || []).length > 1;
 const kindLabel = g => (g.kind === "lxc" ? "LXC " : "VM ") + g.vmid;
 const stateWord = { up: "online", warn: "teilweise erreichbar", down: "offline", unknown: "Status unbekannt" };
+const EYE_OFF = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2 2l12 12"/><path d="M6.6 3.7A6.6 6.6 0 0 1 8 3.5c3.6 0 6 4.5 6 4.5a11 11 0 0 1-1.8 2.4M4.2 5A11 11 0 0 0 2 8s2.4 4.5 6 4.5a6 6 0 0 0 2.7-.6"/><path d="M6.6 6.6a2 2 0 0 0 2.8 2.8"/></svg>`;
 const COPY_ICON = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="5" y="5" width="9" height="9" rx="1.5"/><path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2h-6A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5"/></svg>`;
 
 function targetText(l) {
@@ -326,7 +353,7 @@ function targetText(l) {
   }).filter(Boolean).join(" · ");
 }
 const everything = () => [...D.links, ...(D.services || [])];
-const allItems = () => everything().filter(l => showHidden || !l.hidden);
+const allItems = () => everything().filter(l => !l.hidden);
 const matches = (l, q) => !q || [l.name, l.domain, l.group, l.description, targetText(l), ...(l.addrs || [])]
   .join(" ").toLowerCase().includes(q);
 
@@ -348,7 +375,10 @@ function cardHTML(l, idx) {
       </span>
     </a>
     <span class="st">${status}</span>
-    <button class="edit" data-edit="${esc(l.custom ? "c:" + l.id : "o:" + l.key)}" title="Bearbeiten">✎</button>
+    <span class="tools">
+      <button class="edit" data-edit="${esc(l.custom ? "c:" + l.id : "o:" + l.key)}" title="Bearbeiten" aria-label="Bearbeiten">✎</button>
+      <button data-hide="${esc(itemKey(l))}" title="Ausblenden" aria-label="Ausblenden">${EYE_OFF}</button>
+    </span>
     ${arranging ? moveCtl(itemKey(l), l.group, "links") : ""}
     ${(l.addrs || []).length ? `<div class="addrs">${l.addrs.map(a =>
       `<button class="cp" data-copy="${esc(a)}" title="In Zwischenablage kopieren"><span>${esc(a)}</span>${COPY_ICON}</button>`).join("")}</div>` : ""}
@@ -459,6 +489,7 @@ function bar(label, p, txt, limit) {
 function renderStatus() {
   const el = $("#status");
   if (!S || (!S.nodes.length && !S.storages.length && !S.error)) { el.innerHTML = ""; return; }
+  if (view === "links" && !arranging) setTimeout(updateHiddenBox);
   const t = S.thresholds || {};
   const clusters = [...new Set([...S.nodes, ...S.storages].map(x => x.cluster))];
   const SL = layout().status;
@@ -469,6 +500,7 @@ function renderStatus() {
   const nodeCard = n => `
     <div class="node" data-key="${esc("n:" + n.cluster + "/" + n.name)}" data-zone="status"${arranging ? ` draggable="true"` : ""}>
       <div class="hd"><span class="dot ${n.status === "online" ? "up" : "down"}"></span>${esc(n.name)}
+        <button class="nhide" data-hide="${esc("n:" + n.cluster + "/" + n.name)}" title="Ausblenden" aria-label="Ausblenden">${EYE_OFF}</button>
         <small>${n.status === "online" ? `${n.maxcpu} CPU · up ${Math.floor(n.uptime / 86400)} d` : esc(n.status)}</small></div>
       ${n.status === "online" ? `<div class="bars">
       ${bar("CPU", n.cpu, `${n.cpu.toFixed(0)} %`, t.cpu)}
@@ -479,6 +511,7 @@ function renderStatus() {
   const storCard = s => `
     <div class="node" data-key="${esc("s:" + s.cluster + "/" + s.id)}" data-zone="status"${arranging ? ` draggable="true"` : ""}>
       <div class="hd"><span class="dot ${s.status === "available" ? "up" : "down"}"></span>${esc(s.path || s.id)}
+        <button class="nhide" data-hide="${esc("s:" + s.cluster + "/" + s.id)}" title="Ausblenden" aria-label="Ausblenden">${EYE_OFF}</button>
         <small>${esc(s.shared ? "shared" : s.node)}${s.path && s.id !== s.path ? " · " + esc(s.id) : ""}</small></div>
       <div class="bars">${bar("Belegt", s.pct, `${s.pct.toFixed(0)} % <small>${fmtB(s.disk)} / ${fmtB(s.maxdisk)}</small>`, t.disk)}
       <div class="bar"><div class="row"><span>Frei</span><span class="v">${fmtB(s.maxdisk - s.disk)}</span></div></div></div>
@@ -489,7 +522,8 @@ function renderStatus() {
   const cards = [...S.nodes.map(n => ({ key: "n:" + n.cluster + "/" + n.name, name: n.name, cluster: n.cluster, html: nodeCard(n) })),
                  ...S.storages.map(s => ({ key: "s:" + s.cluster + "/" + s.id, name: s.path || s.id, cluster: s.cluster, html: storCard(s) }))];
   const groups = {};
-  for (const c of cards) (groups[groupOfStatus(c.key)] ||= []).push(c);
+  const hiddenSet = new Set(SL.hidden || []);
+  for (const c of cards) if (!hiddenSet.has(c.key)) (groups[groupOfStatus(c.key)] ||= []).push(c);
   if (arranging) for (const g of SL.groups) groups[g] ||= [];
   const order = orderGroups(Object.keys(groups), SL.groups, null);
   const showHeads = arranging || order.length > 1;
@@ -508,15 +542,16 @@ function render() {
   const q = $("#search").value.trim().toLowerCase();
   document.querySelectorAll("nav button").forEach(b => b.classList.toggle("on", b.dataset.v === view));
   $("#view").innerHTML = view === "audit" ? renderAudit(q) : renderLinks(q);
-  const nh = everything().filter(l => l.hidden).length;
-  $("#hid-wrap").hidden = !nh;
-  $("#toggle-hidden").textContent = showHidden ? "Ausgeblendete verstecken" : `${nh} ausgeblendete anzeigen`;
+  updateHiddenBox();
 }
 
 function apply(d) {
   D = d;
   document.title = D.title;
   if (D.title !== "proxylink") $("#title").textContent = D.title;
+  const sw = $("#storage-warn");
+  sw.hidden = !D.storage_error;
+  sw.textContent = D.storage_error ? "⚠ Speichern nicht möglich: " + D.storage_error : "";
   if (D.zoraxy_url) { $("#zoraxy").href = D.zoraxy_url; $("#zoraxy").hidden = false; }
   const m = [];
   if (D.error) m.push(`<div class="err">Zoraxy-Fehler: ${esc(D.error)}</div>`);
@@ -595,6 +630,7 @@ form.addEventListener("submit", async e => {
       data.hide = form.elements.hide.checked;
       delete data.id; delete data.origin;
       apply(await send("POST", "/api/override", data));
+      toast("Gespeichert ✓");
     } else if (action === "delete") {
       if (!confirm(`„${data.name}“ löschen?`)) return;
       apply(await send("DELETE", "/api/custom/" + data.id));
@@ -602,6 +638,7 @@ form.addEventListener("submit", async e => {
       if (!data.id) delete data.id;
       delete data.key; delete data.hide;
       apply(await send("POST", "/api/custom", data));
+      toast("Gespeichert ✓");
     }
     dlg.close();
   } catch (err) { $("#dlg-err").textContent = err.message; }
@@ -654,6 +691,77 @@ aform.addEventListener("submit", async e => {
   } catch (err) { $("#a-err").textContent = err.message; }
 });
 $("#alerts-btn").onclick = openAlerts;
+
+/* Ausgeblendete Kacheln: Liste unten mit „Einblenden“ */
+function updateHiddenBox() {
+  const box = $("#hidden-box");
+  if (view !== "links" || arranging) { box.innerHTML = ""; return; }
+  const rows = everything().filter(l => l.hidden).map(l => ({ key: itemKey(l), name: l.name, sub: `${l.group} · ${l.domain}`, l }));
+  const SL = layout().status, hid = new Set(SL.hidden || []);
+  if (S) {
+    for (const n of S.nodes) { const k = "n:" + n.cluster + "/" + n.name; if (hid.has(k)) rows.push({ key: k, name: n.name, sub: `Proxmox-Node · ${n.cluster}` }); }
+    for (const s of S.storages) { const k = "s:" + s.cluster + "/" + s.id; if (hid.has(k)) rows.push({ key: k, name: s.path || s.id, sub: `Speicher · ${s.cluster}` }); }
+  }
+  if (!rows.length) { box.innerHTML = ""; return; }
+  box.innerHTML = `<details class="hbox"${hboxOpen ? " open" : ""}><summary>Ausgeblendet (${rows.length}) – zum Wiedereinblenden aufklappen</summary>
+    ${rows.map(r => `<div class="hrow">${r.l ? iconHTML(r.l) : `<span class="ic"><span class="lt">⬢</span></span>`}
+      <span class="tx"><div class="nm">${esc(r.name)}</div><div class="dm">${esc(r.sub)}</div></span>
+      <button class="btn" data-unhide="${esc(r.key)}">Einblenden</button></div>`).join("")}</details>`;
+  box.querySelector("details").addEventListener("toggle", e => hboxOpen = e.target.open);
+}
+
+/* POST mit Bearbeitungs-Token (fragt einmal nach, wenn nötig) */
+async function api(path, body) {
+  let tok = ls.get("token") || "";
+  for (let i = 0; i < 2; i++) {
+    const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-Edit-Token": tok }, body: JSON.stringify(body) });
+    const d = await r.json();
+    if (r.status === 403 && i === 0) { tok = prompt("Bearbeitungs-Token:") || ""; if (!tok) throw new Error("Token fehlt"); ls.set("token", tok); continue; }
+    if (!r.ok) throw new Error(d.error || r.statusText);
+    return d;
+  }
+}
+async function setHidden(key, hidden) {
+  try {
+    apply(await api("/api/hide", { item: key, hidden }));
+    renderStatus();
+    toast(hidden ? "Ausgeblendet – unten unter „Ausgeblendet“ wieder einblenden" : "Eingeblendet ✓");
+  } catch (err) { toast("Nicht gespeichert: " + err.message, true); }
+}
+document.addEventListener("click", e => {
+  const h = e.target.closest?.("[data-hide]");
+  if (h) { e.preventDefault(); setHidden(h.dataset.hide, true); return; }
+  const u = e.target.closest?.("[data-unhide]");
+  if (u) setHidden(u.dataset.unhide, false);
+});
+
+/* Rückmeldung beim Speichern */
+let toastT;
+function toast(text, err) {
+  const t = $("#toast");
+  t.textContent = text; t.className = "on" + (err ? " err" : "");
+  clearTimeout(toastT); toastT = setTimeout(() => t.className = err ? "err" : "", err ? 5000 : 1600);
+}
+
+/* Sicherung importieren */
+$("#import-btn").onclick = () => $("#import-file").click();
+$("#import-file").onchange = async e => {
+  const f = e.target.files[0]; e.target.value = "";
+  if (!f) return;
+  try {
+    const data = JSON.parse(await f.text());
+    if (!confirm("Sicherung einspielen? Anordnung, Anpassungen, eigene Einträge und Alarm-Grenzen werden ersetzt.")) return;
+    let tok = ls.get("token") || "";
+    let r = await fetch("/api/backup", { method: "POST", headers: { "Content-Type": "application/json", "X-Edit-Token": tok }, body: JSON.stringify(data) });
+    if (r.status === 403) {
+      tok = prompt("Bearbeitungs-Token:") || ""; ls.set("token", tok);
+      r = await fetch("/api/backup", { method: "POST", headers: { "Content-Type": "application/json", "X-Edit-Token": tok }, body: JSON.stringify(data) });
+    }
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || r.statusText);
+    apply(d); renderStatus(); toast("Sicherung eingespielt ✓");
+  } catch (err) { toast("Import fehlgeschlagen: " + err.message, true); }
+};
 
 /* Touch: ↑/↓ und Kategorie-Auswahl pro Kachel */
 let linkGroupNames = [], statusGroupNames = [], groupOfStatus = () => "";
@@ -712,10 +820,10 @@ async function postLayout(body) {
     if (r.status === 403 && i === 0) {
       tok = prompt("Bearbeitungs-Token:") || ""; if (!tok) break; ls.set("token", tok); continue;
     }
-    if (!r.ok) { $("#msg").innerHTML = `<div class="err">${esc(d.error || r.statusText)}</div>`; break; }
-    apply(d); renderStatus(); return;
+    if (!r.ok) { toast("Nicht gespeichert: " + (d.error || r.statusText), true); break; }
+    apply(d); renderStatus(); toast("Anordnung gespeichert ✓"); return;
   }
-  render(); renderStatus();
+  render(); renderStatus();  // bei Fehler den gespeicherten Stand wieder anzeigen
 }
 
 const sections = zone => [...document.querySelectorAll(zone === "status" ? "#status section.grp" : "#view section.grp")];
@@ -849,7 +957,7 @@ function iconFail2(img) {
 }
 let prevT;
 form.elements.icon.addEventListener("input", () => { clearTimeout(prevT); prevT = setTimeout(() => previewIcon(), 300); });
-$("#toggle-hidden").onclick = () => { showHidden = !showHidden; render(); };
+
 document.querySelectorAll("nav button").forEach(b => b.onclick = () => { view = b.dataset.v; ls.set("view", view); render(); });
 $("#search").addEventListener("input", render);
 $("#search").addEventListener("keydown", e => {

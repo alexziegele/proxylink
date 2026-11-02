@@ -19,7 +19,8 @@ import urllib.request
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 from sources import parse_docker_hosts, parse_proxmox
-from monitor import Monitor, telegram, save_settings, public_settings, load_settings
+from store import read_json, write_json, check_writable
+from monitor import Monitor, telegram, save_settings, public_settings, load_settings, SETTINGS_FILE
 
 log = logging.getLogger("proxylink")
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(message)s")
@@ -109,15 +110,7 @@ class ZoraxyClient:
         return data or []
 
 
-def _read_json(path, default):
-    try:
-        with open(path, encoding="utf-8") as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return default
-    except Exception as e:
-        log.warning("%s nicht lesbar: %s", path, e)
-        return default
+_read_json = read_json
 
 
 def load_overrides():
@@ -146,17 +139,10 @@ def save_override(data):
             ov[key] = e
         else:
             ov.pop(key, None)
-        os.makedirs(DATA_DIR, exist_ok=True)
-        with open(path + ".tmp", "w", encoding="utf-8") as f:
-            json.dump(ov, f, indent=2, ensure_ascii=False)
-        os.replace(path + ".tmp", path)
+        write_json(path, ov)
 
 
-def _write_json(path, data):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path + ".tmp", "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
-    os.replace(path + ".tmp", path)
+_write_json = write_json
 
 
 # --------------------------------------------------------------------------- Layout (Kategorien, Reihenfolge)
@@ -172,6 +158,7 @@ def load_layout():
     st.setdefault("groups", [])
     st.setdefault("items", {})
     st.setdefault("order", [])
+    st.setdefault("hidden", [])
     return lay
 
 
@@ -213,6 +200,7 @@ def save_layout(data):
                 "groups": _clean_list(st.get("groups")),
                 "items": {str(k): str(v).strip()[:120] for k, v in (st.get("items") or {}).items() if str(v).strip()},
                 "order": _clean_list(st.get("order"), 1000),
+                "hidden": lay["status"].get("hidden", []),
             }
         _write_json(LAYOUT_FILE, lay)
 
@@ -261,22 +249,11 @@ CUSTOM_FIELDS = ("name", "url", "group", "icon", "description", "origin")
 
 
 def load_custom():
-    try:
-        with open(CUSTOM_FILE, encoding="utf-8") as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return []
-    except Exception as e:
-        log.warning("custom.json nicht lesbar: %s", e)
-        return []
+    return read_json(CUSTOM_FILE, [])
 
 
 def save_custom(items):
-    os.makedirs(DATA_DIR, exist_ok=True)
-    tmp = CUSTOM_FILE + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(items, f, indent=2, ensure_ascii=False)
-    os.replace(tmp, CUSTOM_FILE)
+    write_json(CUSTOM_FILE, items)
 
 
 def upsert_custom(entry):
@@ -290,7 +267,7 @@ def upsert_custom(entry):
         cid = entry.get("id")
         for i, it in enumerate(items):
             if it["id"] == cid:
-                items[i] = {"id": cid, **e}
+                items[i] = {"id": cid, **e, **({"hidden": True} if it.get("hidden") else {})}
                 break
         else:
             items.append({"id": uuid.uuid4().hex[:10], **e})
@@ -314,9 +291,73 @@ def custom_links():
             "name": c["name"], "url": c["url"], "group": c.get("group") or "Eigene",
             "icon": c.get("icon", ""), "description": c.get("description", ""),
             "origins": [{"addr": addr, "tls": tls}] if addr else [],
-            "aliases": [], "disabled": False, "raw": c, "hidden": False,
+            "aliases": [], "disabled": False, "raw": c, "hidden": bool(c.get("hidden")),
         })
     return out
+
+
+def set_hidden(data):
+    """Kachel aus-/einblenden. item: o:<key> (Zoraxy/ohne Proxy), c:<id> (eigener Eintrag), n:/s: (Proxmox-Host/Storage)."""
+    item, hidden = str(data.get("item", "")), bool(data.get("hidden"))
+    if item.startswith("o:"):
+        path = os.path.join(DATA_DIR, "overrides.json")
+        with _ov_lock:
+            ov = read_json(path, {})
+            e = ov.setdefault(item[2:], {})
+            if hidden:
+                e["hide"] = True
+            else:
+                e.pop("hide", None)
+                if not e:
+                    ov.pop(item[2:])
+            write_json(path, ov)
+    elif item.startswith("c:"):
+        with _custom_lock:
+            items = load_custom()
+            for it in items:
+                if it["id"] == item[2:]:
+                    if hidden:
+                        it["hidden"] = True
+                    else:
+                        it.pop("hidden", None)
+            save_custom(items)
+    elif item[:2] in ("n:", "s:"):
+        with _layout_lock:
+            lay = load_layout()
+            hid = [x for x in lay["status"]["hidden"] if x != item]
+            lay["status"]["hidden"] = hid + [item] if hidden else hid
+            write_json(LAYOUT_FILE, lay)
+    else:
+        raise ValueError("unbekannte Kachel")
+
+
+# --------------------------------------------------------------------------- Sicherung (Export/Import)
+def export_backup():
+    st = read_json(SETTINGS_FILE, {})
+    st.pop("telegram_token", None)  # Geheimnis nicht in die Datei
+    return {
+        "app": "proxylink", "version": 1, "created": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "layout": load_layout(),
+        "overrides": read_json(os.path.join(DATA_DIR, "overrides.json"), {}),
+        "custom": load_custom(),
+        "settings": st,
+    }
+
+
+def import_backup(data):
+    if data.get("app") != "proxylink":
+        raise ValueError("Keine proxylink-Sicherung")
+    if isinstance(data.get("layout"), dict):
+        with _layout_lock:
+            write_json(LAYOUT_FILE, data["layout"])
+    if isinstance(data.get("overrides"), dict):
+        with _ov_lock:
+            write_json(os.path.join(DATA_DIR, "overrides.json"), data["overrides"])
+    if isinstance(data.get("custom"), list):
+        with _custom_lock:
+            save_custom([c for c in data["custom"] if isinstance(c, dict) and c.get("id")])
+    if isinstance(data.get("settings"), dict):
+        save_settings({k: v for k, v in data["settings"].items() if k != "telegram_token"})
 
 
 # --------------------------------------------------------------------------- Routen verfolgen
@@ -470,6 +511,9 @@ class Cache:
         self.links, self.services, self.guests, self.containers = [], [], [], []
         self.refresh_lock = threading.Lock()
         self.error, self.warnings, self.updated = None, [], 0
+        self.storage_error = check_writable()
+        if self.storage_error:
+            log.error(self.storage_error)
         self.lock = threading.Lock()
 
     def _inventory(self):
@@ -502,6 +546,7 @@ class Cache:
             log.error("Zoraxy-Abruf fehlgeschlagen: %s", e)
             links, error = None, str(e)
         guests, containers, warnings = self._inventory()
+        self.storage_error = check_writable()
         if links is None:
             links = [l for l in self.links if not l.get("custom")]  # letzten Zoraxy-Stand behalten
         links = sorted(links + custom_links(), key=lambda l: (l["group"].lower(), l["name"].lower()))
@@ -525,6 +570,19 @@ class Cache:
                     else:
                         l.setdefault("ov", {})["group"] = l["group"]
 
+    def apply_hidden(self, item, hidden):
+        with self.lock:
+            for l in self.links + self.services:
+                k = ("c:" + l["id"]) if l.get("custom") else ("o:" + l.get("key", ""))
+                if k == item:
+                    l["hidden"] = hidden
+                    if l.get("custom"):
+                        l["raw"]["hidden"] = hidden
+                    else:
+                        l.setdefault("ov", {}).pop("hide", None)
+                        if hidden:
+                            l["ov"]["hide"] = True
+
     def loop(self):
         while True:
             self.refresh()
@@ -534,7 +592,8 @@ class Cache:
         with self.lock:
             return {"title": TITLE, "links": self.links, "error": self.error, "updated": self.updated,
                     "warnings": self.warnings, "services": self.services,
-                    "edit_protected": bool(EDIT_TOKEN), "layout": load_layout(), "zoraxy_url": ZORAXY_URL, "guests": self.guests, "containers": self.containers,
+                    "edit_protected": bool(EDIT_TOKEN), "layout": load_layout(),
+                    "storage_error": self.storage_error, "zoraxy_url": ZORAXY_URL, "guests": self.guests, "containers": self.containers,
                     "sources": {"proxmox": [p.name for p in self.pves], "docker": [d.name for d in self.dockers]}}
 
 
@@ -565,6 +624,15 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json(MONITOR.snapshot())
         if self.path == "/api/settings":
             return self._json(public_settings())
+        if self.path == "/api/backup":
+            body = json.dumps(export_backup(), indent=2, ensure_ascii=False).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Disposition",
+                             f'attachment; filename="proxylink-backup-{time.strftime("%Y%m%d")}.json"')
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            return self.wfile.write(body)
         if self.path == "/api/refresh":
             CACHE.refresh()
             return self._json(CACHE.snapshot())
@@ -594,17 +662,23 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json({"ok": ok, "error": err}, 200 if ok else 502)
             except (ValueError, json.JSONDecodeError) as e:
                 return self._json({"error": str(e)}, 400)
-        handlers = {"/api/custom": upsert_custom, "/api/override": save_override, "/api/layout": save_layout}
+            except OSError as e:
+                return self._json({"error": f"Speichern fehlgeschlagen: {e}"}, 500)
+        handlers = {"/api/custom": upsert_custom, "/api/override": save_override, "/api/layout": save_layout, "/api/hide": set_hidden,
+                    "/api/backup": import_backup}
         if self.path not in handlers:
             return self._json({"error": "not found"}, 404)
         if not self._authorized():
             return
         try:
-            n = min(int(self.headers.get("Content-Length", 0)), 20000)
+            n = min(int(self.headers.get("Content-Length", 0)), 2_000_000)
             data = json.loads(self.rfile.read(n) or b"{}")
             handlers[self.path](data)
             if self.path == "/api/layout":  # ohne kompletten Neuabruf, damit Drag & Drop flott bleibt
                 CACHE.apply_assign(data.get("assign") or {})
+                return self._json(CACHE.snapshot())
+            if self.path == "/api/hide":
+                CACHE.apply_hidden(str(data.get("item", "")), bool(data.get("hidden")))
                 return self._json(CACHE.snapshot())
         except (ValueError, json.JSONDecodeError) as e:
             return self._json({"error": str(e)}, 400)

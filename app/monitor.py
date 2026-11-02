@@ -9,6 +9,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from store import write_json
+
 log = logging.getLogger("proxylink")
 
 
@@ -76,10 +78,7 @@ def save_settings(data):
             st["telegram_token"] = ""
         elif tok:
             st["telegram_token"] = tok
-        os.makedirs(DATA_DIR, exist_ok=True)
-        with open(SETTINGS_FILE + ".tmp", "w", encoding="utf-8") as f:
-            json.dump(st, f, indent=2)
-        os.replace(SETTINGS_FILE + ".tmp", SETTINGS_FILE)
+        write_json(SETTINGS_FILE, st)
         return st
 
 
