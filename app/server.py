@@ -152,6 +152,71 @@ def save_override(data):
         os.replace(path + ".tmp", path)
 
 
+def _write_json(path, data):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path + ".tmp", "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+    os.replace(path + ".tmp", path)
+
+
+# --------------------------------------------------------------------------- Layout (Kategorien, Reihenfolge)
+LAYOUT_FILE = os.path.join(DATA_DIR, "layout.json")
+_layout_lock = threading.Lock()
+
+
+def load_layout():
+    lay = _read_json(LAYOUT_FILE, {})
+    lay.setdefault("groups", [])
+    lay.setdefault("order", [])
+    st = lay.setdefault("status", {})
+    st.setdefault("groups", [])
+    st.setdefault("items", {})
+    st.setdefault("order", [])
+    return lay
+
+
+def _clean_list(v, limit=500):
+    return [str(x).strip()[:120] for x in (v or []) if str(x).strip()][:limit]
+
+
+def save_layout(data):
+    """Speichert Kategorien-Reihenfolge, Kachel-Reihenfolge, Zuordnungen und die Statusleisten-Gruppen.
+
+    assign: {"o:<key>": "Gruppe", "c:<id>": "Gruppe"} – Zoraxy/ohne Proxy über Overrides, eigene Einträge direkt.
+    """
+    assign = {str(k): str(v).strip()[:120] for k, v in (data.get("assign") or {}).items() if str(v).strip()}
+    ov_assign = {k[2:]: g for k, g in assign.items() if k.startswith("o:")}
+    c_assign = {k[2:]: g for k, g in assign.items() if k.startswith("c:")}
+    if ov_assign:
+        path = os.path.join(DATA_DIR, "overrides.json")
+        with _ov_lock:
+            ov = _read_json(path, {})
+            for key, g in ov_assign.items():
+                ov.setdefault(key, {})["group"] = g
+            _write_json(path, ov)
+    if c_assign:
+        with _custom_lock:
+            items = load_custom()
+            for it in items:
+                if it["id"] in c_assign:
+                    it["group"] = c_assign[it["id"]]
+            save_custom(items)
+    with _layout_lock:
+        lay = load_layout()
+        if "groups" in data:
+            lay["groups"] = _clean_list(data["groups"])
+        if "order" in data:
+            lay["order"] = _clean_list(data["order"], 5000)
+        if isinstance(data.get("status"), dict):
+            st = data["status"]
+            lay["status"] = {
+                "groups": _clean_list(st.get("groups")),
+                "items": {str(k): str(v).strip()[:120] for k, v in (st.get("items") or {}).items() if str(v).strip()},
+                "order": _clean_list(st.get("order"), 1000),
+            }
+        _write_json(LAYOUT_FILE, lay)
+
+
 def to_links(hosts):
     ov = load_overrides()
     links = []
@@ -449,6 +514,17 @@ class Cache:
         log.info("%d Links, %d ohne Proxy, %d Gäste, %d Container",
                  len(self.links), len(self.services), len(guests), len(containers))
 
+    def apply_assign(self, assign):
+        with self.lock:
+            for l in self.links + self.services:
+                k = ("c:" + l["id"]) if l.get("custom") else ("o:" + l.get("key", ""))
+                if k in assign and str(assign[k]).strip():
+                    l["group"] = str(assign[k]).strip()[:120]
+                    if l.get("custom"):
+                        l["raw"]["group"] = l["group"]
+                    else:
+                        l.setdefault("ov", {})["group"] = l["group"]
+
     def loop(self):
         while True:
             self.refresh()
@@ -458,7 +534,7 @@ class Cache:
         with self.lock:
             return {"title": TITLE, "links": self.links, "error": self.error, "updated": self.updated,
                     "warnings": self.warnings, "services": self.services,
-                    "edit_protected": bool(EDIT_TOKEN), "zoraxy_url": ZORAXY_URL, "guests": self.guests, "containers": self.containers,
+                    "edit_protected": bool(EDIT_TOKEN), "layout": load_layout(), "zoraxy_url": ZORAXY_URL, "guests": self.guests, "containers": self.containers,
                     "sources": {"proxmox": [p.name for p in self.pves], "docker": [d.name for d in self.dockers]}}
 
 
@@ -518,14 +594,18 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json({"ok": ok, "error": err}, 200 if ok else 502)
             except (ValueError, json.JSONDecodeError) as e:
                 return self._json({"error": str(e)}, 400)
-        handlers = {"/api/custom": upsert_custom, "/api/override": save_override}
+        handlers = {"/api/custom": upsert_custom, "/api/override": save_override, "/api/layout": save_layout}
         if self.path not in handlers:
             return self._json({"error": "not found"}, 404)
         if not self._authorized():
             return
         try:
             n = min(int(self.headers.get("Content-Length", 0)), 20000)
-            handlers[self.path](json.loads(self.rfile.read(n) or b"{}"))
+            data = json.loads(self.rfile.read(n) or b"{}")
+            handlers[self.path](data)
+            if self.path == "/api/layout":  # ohne kompletten Neuabruf, damit Drag & Drop flott bleibt
+                CACHE.apply_assign(data.get("assign") or {})
+                return self._json(CACHE.snapshot())
         except (ValueError, json.JSONDecodeError) as e:
             return self._json({"error": str(e)}, 400)
         except OSError as e:

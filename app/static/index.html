@@ -8,13 +8,12 @@
 <style>
   :root {
     --bg: #0f1216; --card: #171b21; --card-h: #1e232b; --line: #262c35; --chip: #20262e;
-    --text: #e6e9ee; --muted: #8a93a1; --accent: #7b5cff;
-    --grad: linear-gradient(120deg, #ff4ecd, #7b5cff 52%, #16d9c0); --track: #262c35;
+    --text: #e6e9ee; --muted: #8a93a1; --accent: #3a9d94; --accent-ink: #fff; --track: #262c35;
     --up: #4cb782; --warn: #e2b340; --down: #e66a5a; --unk: #6b7380; --sw: #4a525e;
   }
   @media (prefers-color-scheme: light) {
     :root { --bg: #f4f5f7; --card: #fff; --card-h: #f0f3f7; --line: #e1e4e9; --chip: #f1f3f6;
-            --text: #1a1d22; --muted: #6b7380; --accent: #6a4cf0; --sw: #c3c8d0; --track: #e6e8ec; }
+            --text: #1a1d22; --muted: #6b7380; --accent: #23766f; --sw: #c3c8d0; --track: #e6e8ec; }
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text);
@@ -22,12 +21,11 @@
   main { max-width: 1180px; margin: 0 auto; padding: 36px 20px 60px; }
   header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 22px; }
   h1 { margin: 0; font-size: 26px; font-weight: 800; letter-spacing: -.03em; display: flex; align-items: center; gap: 10px; }
-  h1 img { width: 36px; height: 36px; filter: drop-shadow(0 4px 12px rgba(123,92,255,.35)); }
-  h1 .lk { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  h1 img { width: 34px; height: 34px; }
+  h1 .lk { color: var(--accent); }
   a.btn { text-decoration: none; display: inline-block; }
 
   /* Proxmox-Status */
-  #status { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; margin-bottom: 8px; }
   .node { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
   .node .hd { display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 8px; }
   .node .hd small { margin-left: auto; color: var(--muted); font-weight: 400; font-size: 12px; }
@@ -51,7 +49,7 @@
   .btn { font: inherit; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--card);
          color: var(--text); cursor: pointer; }
   .btn:hover { border-color: var(--accent); }
-  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
   .btn.danger { color: var(--down); }
   h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted);
        font-weight: 600; margin: 26px 0 10px; }
@@ -71,6 +69,34 @@
   .ic { position: relative; }
   .ic img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
   .card.hid { opacity: .45; }
+  .ic { background: var(--chip); border: 1px solid var(--line); color: var(--muted); font-weight: 650; }
+  .ic.loaded { border-color: transparent; }
+  .ic .lt { position: relative; }
+  .ic.loaded { background: transparent !important; }
+  .ic.loaded .lt { display: none; }
+  .ic img { opacity: 0; } .ic.loaded img { opacity: 1; }
+
+  /* Anordnen */
+  .sgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; }
+  #status section + section { margin-top: 10px; }
+  #status h2 { margin: 6px 0 10px; }
+  #status { margin-bottom: 8px; }
+  body.arranging .card, body.arranging .node { cursor: grab; border-style: dashed; border-color: var(--accent); }
+  body.arranging a.main { pointer-events: none; }
+  body.arranging .edit, body.arranging .addrs { display: none; }
+  body.arranging .grid, body.arranging .sgrid { min-height: 64px; padding: 6px; margin: -6px; border-radius: 12px;
+    outline: 1px dashed var(--line); outline-offset: -1px; }
+  .dragging { opacity: .35; }
+  h2.gh { display: flex; align-items: center; gap: 8px; }
+  .handle { cursor: grab; color: var(--muted); font-size: 16px; user-select: none; padding: 0 2px; }
+  .gname { font: 600 12px/1 inherit; text-transform: uppercase; letter-spacing: .08em; padding: 5px 8px; width: 220px;
+           color: var(--text); }
+  .gdel { background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 16px; }
+  .gdel:hover { color: var(--down); }
+  .add-group { margin-top: 18px; }
+  #arrange-hint { display: none; background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--text);
+                  border-radius: 8px; padding: 9px 12px; font-size: 13.5px; margin-bottom: 14px; }
+  body.arranging #arrange-hint { display: block; }
   .tx { min-width: 0; flex: 1; }
   .nm { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .dm { color: var(--muted); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -110,6 +136,48 @@
   footer { margin-top: 40px; color: var(--muted); font-size: 12px; }
   footer button { background: none; border: none; color: var(--accent); cursor: pointer; font: inherit; padding: 0; }
 
+  /* Touch-Steuerung zum Anordnen (Drag & Drop geht auf Touch nicht) */
+  .mv, .smv, .h-touch { display: none; }
+  @media (pointer: coarse) {
+    body.arranging .mv { display: flex; gap: 6px; padding: 0 12px 10px; }
+    body.arranging .node .mv { padding: 8px 0 0; }
+    body.arranging .smv { display: inline-flex; gap: 4px; }
+    .mv button, .smv button { min-width: 36px; height: 34px; border-radius: 7px; border: 1px solid var(--line);
+                              background: var(--card-h); color: var(--text); font-size: 15px; }
+    .mv select { flex: 1; min-width: 0; height: 34px; padding: 0 8px; }
+    .handle, .h-desk { display: none; }
+    .h-touch { display: inline; }
+    .edit { opacity: 1; }
+  }
+  @media (hover: none) { .edit { opacity: .8; } }
+
+  /* Mobil */
+  @media (max-width: 720px) {
+    main { padding: 16px 12px 40px; }
+    header { gap: 8px; margin-bottom: 14px; }
+    h1 { font-size: 21px; gap: 8px; } h1 img { width: 30px; height: 30px; }
+    #clock, .bl { display: none; }
+    .btn { padding: 8px 11px; min-height: 40px; }
+    nav { order: 10; }
+    #search { order: 11; flex: 1; width: auto; min-width: 0; min-height: 40px; }
+    nav button { padding: 7px 12px; }
+    .grid, .sgrid { grid-template-columns: 1fr; gap: 8px; }
+    .addrs { padding-left: 14px; }
+    .cp { font-size: 12.5px; padding: 4px 8px; }
+    th, td { padding: 7px 9px; font-size: 13px; }
+    h2 { margin: 20px 0 8px; }
+    .gname { width: 100%; flex: 1; min-width: 0; }
+    dialog { width: calc(100vw - 16px); max-width: none; max-height: calc(100dvh - 16px); overflow: auto; padding: 18px; }
+    dialog input, dialog select { font-size: 16px; } /* verhindert Zoom auf iOS */
+    .grid2 { grid-template-columns: 1fr 1fr; }
+    #status h2 { margin-top: 4px; }
+    .node { padding: 10px 12px; }
+    .node .hd { margin-bottom: 4px; }
+    .bars { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    .bar { margin-top: 4px; }
+    .bar .v small { display: none; }
+  }
+
   /* Dialog */
   dialog { border: 1px solid var(--line); border-radius: 12px; background: var(--card); color: var(--text);
            padding: 22px; width: min(440px, 92vw); }
@@ -141,11 +209,15 @@
     <span id="clock"></span>
     <span class="spacer"></span>
     <nav><button data-v="links" class="on">Links</button><button data-v="audit">Abgleich</button></nav>
-    <a class="btn" id="zoraxy" target="_blank" rel="noopener" hidden>Zoraxy ↗</a>
-    <button class="btn" id="alerts-btn" title="Alarme &amp; Telegram">🔔 Alarme<span id="alerts-badge"></span></button>
-    <button class="btn" id="add">+ Eintrag</button>
+    <a class="btn" id="zoraxy" target="_blank" rel="noopener" hidden title="Zoraxy öffnen"><span class="bl">Zoraxy </span>↗</a>
+    <button class="btn" id="alerts-btn" title="Alarme &amp; Telegram">🔔<span class="bl"> Alarme</span><span id="alerts-badge"></span></button>
+    <button class="btn" id="arrange" title="Kategorien und Reihenfolge anordnen">✥<span class="bl"> Anordnen</span></button>
+    <button class="btn" id="add" title="Eigenen Eintrag hinzufügen">+<span class="bl"> Eintrag</span></button>
     <input id="search" type="search" placeholder="Suchen…  ( / )" autocomplete="off">
   </header>
+  <div id="arrange-hint"><span class="h-desk">Kacheln und Proxmox-Hosts per Drag &amp; Drop in andere Kategorien ziehen,
+    Kategorien am ⠿ verschieben, Namen direkt umbenennen. Mit „Fertig“ beenden.</span><span class="h-touch">Mit ↑ ↓ verschieben,
+    Kategorie über die Auswahl wechseln, Namen antippen zum Umbenennen. Mit ✓ beenden.</span></div>
   <div id="status"></div>
   <div id="view"></div>
   <div id="msg"></div>
@@ -230,15 +302,15 @@ function iconUrls(icon, l) {
 }
 function iconHTML(l) {
   const urls = iconUrls(l.icon, l);
-  return `<span class="ic" style="background:${color(l.domain || l.name)}">${esc((l.name[0] || "?").toUpperCase())}${urls.length
-    ? `<img src="${esc(urls[0])}" data-alt="${esc(urls.slice(1).join("|"))}" alt="" loading="lazy" onload="this.parentNode.style.background='transparent'" onerror="iconFail(this)">` : ""}</span>`;
+  return `<span class="ic"><span class="lt">${esc((l.name[0] || "?").toUpperCase())}</span>${urls.length
+    ? `<img src="${esc(urls[0])}" data-alt="${esc(urls.slice(1).join("|"))}" alt="" loading="lazy" draggable="false" onload="this.parentNode.classList.add('loaded')" onerror="iconFail(this)">` : ""}</span>`;
 }
 function iconFail(img) {
   const rest = img.dataset.alt ? img.dataset.alt.split("|") : [];
   if (rest.length) { img.dataset.alt = rest.slice(1).join("|"); img.src = rest[0]; } else img.remove();
 }
 
-function color(str) { let h = 0; for (const c of str) h = (h * 31 + c.charCodeAt(0)) % 360; return `hsl(${h} 45% 45%)`; }
+
 function esc(s) { return String(s ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 const multiPve = () => (D.sources?.proxmox || []).length > 1;
 const kindLabel = g => (g.kind === "lxc" ? "LXC " : "VM ") + g.vmid;
@@ -265,8 +337,9 @@ function cardHTML(l, idx) {
     : `<span class="dot ${l.state || ""}" title="${esc(stateWord[l.state || "unknown"])}"></span>`;
   const sub = l.unproxied ? (l.description || "kein Proxy") : (l.description || l.domain);
   return `
-  <div class="card${l.disabled ? " off" : ""}${l.unproxied ? " unp" : ""}${l.hidden ? " hid" : ""}">
-    <a class="main" href="${esc(l.url)}" target="_blank" rel="noopener">
+  <div class="card${l.disabled ? " off" : ""}${l.unproxied ? " unp" : ""}${l.hidden ? " hid" : ""}"
+       data-key="${esc(itemKey(l))}" data-g="${esc(l.group)}" data-zone="links"${arranging ? ` draggable="true"` : ""}>
+    <a class="main" draggable="false" href="${esc(l.url)}" target="_blank" rel="noopener">
       ${iconHTML(l)}
       <span class="tx">
         <div class="nm">${esc(l.name)}</div>
@@ -276,20 +349,50 @@ function cardHTML(l, idx) {
     </a>
     <span class="st">${status}</span>
     <button class="edit" data-edit="${esc(l.custom ? "c:" + l.id : "o:" + l.key)}" title="Bearbeiten">✎</button>
+    ${arranging ? moveCtl(itemKey(l), l.group, "links") : ""}
     ${(l.addrs || []).length ? `<div class="addrs">${l.addrs.map(a =>
       `<button class="cp" data-copy="${esc(a)}" title="In Zwischenablage kopieren"><span>${esc(a)}</span>${COPY_ICON}</button>`).join("")}</div>` : ""}
   </div>`;
 }
 
+const itemKey = l => l.custom ? "c:" + l.id : "o:" + l.key;
+const layout = () => D.layout || { groups: [], order: [], status: { groups: [], items: {}, order: [] } };
+
+/* Reihenfolge der Kategorien: gespeicherte zuerst, neue alphabetisch dahinter, "Ohne Proxy" ans Ende */
+function orderGroups(names, saved, last) {
+  const set = new Set(names);
+  const head = saved.filter(g => set.has(g));
+  const rest = names.filter(g => !saved.includes(g)).sort((a, b) => (a === last) - (b === last) || a.localeCompare(b, "de"));
+  return [...head, ...rest];
+}
+function sortByOrder(list, order, keyOf, nameOf) {
+  const idx = new Map(order.map((k, i) => [k, i]));
+  // ohne gespeicherte Position bleibt die ursprüngliche Reihenfolge (sort ist stabil)
+  return list.sort((a, b) => (idx.get(keyOf(a)) ?? 1e9) - (idx.get(keyOf(b)) ?? 1e9));
+}
+function groupHead(g, empty, zone, note = "") {
+  if (!arranging) return `<h2>${esc(g)}${note}</h2>`;
+  return `<h2 class="gh"><span class="handle" draggable="true" data-zone="${zone}" title="Kategorie verschieben">⠿</span>
+    <input class="gname" value="${esc(g)}" data-old="${esc(g)}" data-zone="${zone}" aria-label="Kategoriename">
+    <span class="smv"><button data-smv="-1" data-zone="${zone}" aria-label="Kategorie nach oben">↑</button><button data-smv="1" data-zone="${zone}" aria-label="Kategorie nach unten">↓</button></span>
+    ${empty ? `<button class="gdel" data-del="${esc(g)}" data-zone="${zone}" title="Leere Kategorie entfernen">×</button>` : ""}</h2>`;
+}
+
 function renderLinks(q) {
+  const L = layout();
+  if (arranging) q = "";
   const groups = {};
   for (const l of allItems().filter(l => matches(l, q))) (groups[l.group] ||= []).push(l);
-  const order = Object.keys(groups).sort((a, b) =>
-    (a === "Ohne Proxy") - (b === "Ohne Proxy") || a.localeCompare(b, "de"));
+  if (arranging) for (const g of L.groups) groups[g] ||= [];
+  const order = orderGroups(Object.keys(groups), L.groups, "Ohne Proxy");
+  linkGroupNames = order;
   const html = order.map(g => `
-    <h2>${esc(g)}${g === "Ohne Proxy" ? ` <small>· läuft, aber keine Zoraxy-Route</small>` : ""}</h2>
-    <div class="grid">${groups[g].map(cardHTML).join("")}</div>`).join("");
-  return html || (allItems().length ? `<p class="empty">Keine Treffer.</p>` : "");
+    <section class="grp" data-group="${esc(g)}">
+      ${groupHead(g, !groups[g].length, "links", g === "Ohne Proxy" ? ` <small>· läuft, aber keine Zoraxy-Route</small>` : "")}
+      <div class="grid" data-zone="links">${sortByOrder(groups[g], L.order, itemKey, l => l.name).map(cardHTML).join("")}</div>
+    </section>`).join("");
+  return (html || (allItems().length ? `<p class="empty">Keine Treffer.</p>` : "")) +
+    (arranging ? `<button class="btn add-group" data-add="links">+ Kategorie</button>` : "");
 }
 
 function renderAudit(q) {
@@ -358,32 +461,46 @@ function renderStatus() {
   if (!S || (!S.nodes.length && !S.storages.length && !S.error)) { el.innerHTML = ""; return; }
   const t = S.thresholds || {};
   const clusters = [...new Set([...S.nodes, ...S.storages].map(x => x.cluster))];
+  const SL = layout().status;
+  const defGroup = c => clusters.length > 1 ? "Cluster " + c : "Proxmox";
+  groupOfStatus = key => SL.items[key] || defGroup(key.slice(2).split("/")[0]);
+  statusGroupNames = orderGroups([...new Set([...[...S.nodes.map(n => "n:" + n.cluster + "/" + n.name),
+    ...S.storages.map(s => "s:" + s.cluster + "/" + s.id)].map(k => groupOfStatus(k)), ...SL.groups])], SL.groups, null);
   const nodeCard = n => `
-    <div class="node">
+    <div class="node" data-key="${esc("n:" + n.cluster + "/" + n.name)}" data-zone="status"${arranging ? ` draggable="true"` : ""}>
       <div class="hd"><span class="dot ${n.status === "online" ? "up" : "down"}"></span>${esc(n.name)}
         <small>${n.status === "online" ? `${n.maxcpu} CPU · up ${Math.floor(n.uptime / 86400)} d` : esc(n.status)}</small></div>
-      ${n.status === "online" ? `
+      ${n.status === "online" ? `<div class="bars">
       ${bar("CPU", n.cpu, `${n.cpu.toFixed(0)} %`, t.cpu)}
       ${bar("RAM", n.mem_pct, `${n.mem_pct.toFixed(0)} % <small>${fmtB(n.mem)} / ${fmtB(n.maxmem)}</small>`, t.ram)}
-      ${bar("Disk", n.disk_pct, `${n.disk_pct.toFixed(0)} % <small>${fmtB(n.disk)} / ${fmtB(n.maxdisk)}</small>`, t.disk)}` : ""}
+      ${bar("Disk", n.disk_pct, `${n.disk_pct.toFixed(0)} % <small>${fmtB(n.disk)} / ${fmtB(n.maxdisk)}</small>`, t.disk)}</div>` : ""}
+      ${arranging ? moveCtl("", groupOfStatus("n:" + n.cluster + "/" + n.name), "status") : ""}
     </div>`;
   const storCard = s => `
-    <div class="node">
+    <div class="node" data-key="${esc("s:" + s.cluster + "/" + s.id)}" data-zone="status"${arranging ? ` draggable="true"` : ""}>
       <div class="hd"><span class="dot ${s.status === "available" ? "up" : "down"}"></span>${esc(s.path || s.id)}
         <small>${esc(s.shared ? "shared" : s.node)}${s.path && s.id !== s.path ? " · " + esc(s.id) : ""}</small></div>
-      ${bar("Belegt", s.pct, `${s.pct.toFixed(0)} % <small>${fmtB(s.disk)} / ${fmtB(s.maxdisk)}</small>`, t.disk)}
-      <div class="bar"><div class="row"><span>Frei</span><span class="v">${fmtB(s.maxdisk - s.disk)}</span></div></div>
+      <div class="bars">${bar("Belegt", s.pct, `${s.pct.toFixed(0)} % <small>${fmtB(s.disk)} / ${fmtB(s.maxdisk)}</small>`, t.disk)}
+      <div class="bar"><div class="row"><span>Frei</span><span class="v">${fmtB(s.maxdisk - s.disk)}</span></div></div></div>
+      ${arranging ? moveCtl("", groupOfStatus("s:" + s.cluster + "/" + s.id), "status") : ""}
     </div>`;
-  const err = S.error ? `<div class="wrn" style="grid-column:1/-1;color:var(--warn);font-size:13px">Proxmox: ${esc(S.error)}</div>` : "";
-  if (clusters.length <= 1) {
-    el.innerHTML = err + [...S.nodes.map(nodeCard), ...S.storages.map(storCard)].join("");
-  } else {
-    el.innerHTML = err + clusters.map(c => `<h2 style="grid-column:1/-1;margin:6px 0 0">Cluster ${esc(c)}</h2>` +
-      [...S.nodes.filter(n => n.cluster === c).map(nodeCard), ...S.storages.filter(s => s.cluster === c).map(storCard)].join("")).join("");
-  }
+  const err = S.error ? `<div class="wrn" style="color:var(--warn);font-size:13px;margin-bottom:8px">Proxmox: ${esc(S.error)}</div>` : "";
+  // Gruppen: selbst zugeordnet, sonst je Cluster (bei nur einem Cluster "Proxmox")
+  const cards = [...S.nodes.map(n => ({ key: "n:" + n.cluster + "/" + n.name, name: n.name, cluster: n.cluster, html: nodeCard(n) })),
+                 ...S.storages.map(s => ({ key: "s:" + s.cluster + "/" + s.id, name: s.path || s.id, cluster: s.cluster, html: storCard(s) }))];
+  const groups = {};
+  for (const c of cards) (groups[groupOfStatus(c.key)] ||= []).push(c);
+  if (arranging) for (const g of SL.groups) groups[g] ||= [];
+  const order = orderGroups(Object.keys(groups), SL.groups, null);
+  const showHeads = arranging || order.length > 1;
+  el.innerHTML = err + order.map(g => `
+    <section class="grp" data-group="${esc(g)}">
+      ${showHeads ? groupHead(g, !groups[g].length, "status") : ""}
+      <div class="sgrid" data-zone="status">${sortByOrder(groups[g], SL.order, c => c.key, c => c.name).map(c => c.html).join("")}</div>
+    </section>`).join("") + (arranging ? `<button class="btn add-group" data-add="status" style="margin:0 0 10px">+ Gruppe</button>` : "");
 }
 async function loadStatus() {
-  try { S = await (await fetch("/api/status")).json(); renderStatus(); } catch {}
+  try { S = await (await fetch("/api/status")).json(); if (!arranging) renderStatus(); } catch {}
   $("#alerts-badge").textContent = S && S.active && S.active.length ? S.active.length : "";
 }
 
@@ -411,7 +528,7 @@ function apply(d) {
 }
 
 async function load(path = "/api/links") {
-  if (document.querySelector("dialog[open]")) return;  // gilt für beide Dialoge
+  if (document.querySelector("dialog[open]") || arranging) return;  // nicht mitten im Bearbeiten neu zeichnen
   try { apply(await (await fetch(path)).json()); }
   catch (e) { $("#msg").innerHTML = `<div class="err">Backend nicht erreichbar.</div>`; }
 }
@@ -537,6 +654,170 @@ aform.addEventListener("submit", async e => {
   } catch (err) { $("#a-err").textContent = err.message; }
 });
 $("#alerts-btn").onclick = openAlerts;
+
+/* Touch: ↑/↓ und Kategorie-Auswahl pro Kachel */
+let linkGroupNames = [], statusGroupNames = [], groupOfStatus = () => "";
+function moveCtl(key, group, zone) {
+  const names = zone === "status" ? statusGroupNames : linkGroupNames;
+  return `<div class="mv"><button data-mv="-1" aria-label="Nach vorne">↑</button><button data-mv="1" aria-label="Nach hinten">↓</button>
+    <select data-mvg aria-label="Kategorie">${names.map(n => `<option${n === group ? " selected" : ""}>${esc(n)}</option>`).join("")}</select></div>`;
+}
+document.addEventListener("click", e => {
+  const b = e.target.closest?.("[data-mv]");
+  if (b) {
+    const el = b.closest(".card, .node"), dir = +b.dataset.mv, zone = el.dataset.zone;
+    const sib = dir < 0 ? el.previousElementSibling : el.nextElementSibling;
+    if (sib) el.parentNode.insertBefore(el, dir < 0 ? sib : sib.nextSibling);
+    else {  // an den Rand → in die benachbarte Kategorie
+      const secs = sections(zone), i = secs.indexOf(el.closest("section.grp")), t = secs[i + dir];
+      if (!t) return;
+      const grid = t.querySelector(".grid, .sgrid");
+      dir < 0 ? grid.appendChild(el) : grid.insertBefore(el, grid.firstChild);
+    }
+    commit(zone); return;
+  }
+  const s = e.target.closest?.("[data-smv]");
+  if (s) {
+    const sec = s.closest("section.grp"), dir = +s.dataset.smv;
+    const sib = dir < 0 ? sec.previousElementSibling : sec.nextElementSibling;
+    if (sib && sib.matches("section.grp")) { sec.parentNode.insertBefore(sec, dir < 0 ? sib : sib.nextSibling); commit(s.dataset.zone); }
+  }
+});
+document.addEventListener("change", e => {
+  const sel = e.target.closest?.("[data-mvg]");
+  if (!sel) return;
+  const el = sel.closest(".card, .node"), zone = el.dataset.zone;
+  const t = sections(zone).find(x => x.dataset.group === sel.value);
+  if (t) { t.querySelector(".grid, .sgrid").appendChild(el); commit(zone); }
+});
+
+/* Anordnen: Drag & Drop für Kacheln, Proxmox-Hosts und Kategorien */
+let arranging = false, dragEl = null, dragSec = null;
+
+function setArranging(on) {
+  arranging = on;
+  document.body.classList.toggle("arranging", on);
+  $("#arrange").innerHTML = on ? `✓<span class="bl"> Fertig</span>` : `✥<span class="bl"> Anordnen</span>`;
+  $("#arrange").classList.toggle("primary", on);
+  if (on && view !== "links") { view = "links"; ls.set("view", view); }
+  render(); renderStatus();
+}
+
+async function postLayout(body) {
+  let tok = ls.get("token") || "";
+  for (let i = 0; i < 2; i++) {
+    const r = await fetch("/api/layout", { method: "POST", headers: { "Content-Type": "application/json", "X-Edit-Token": tok },
+                                           body: JSON.stringify(body) });
+    const d = await r.json();
+    if (r.status === 403 && i === 0) {
+      tok = prompt("Bearbeitungs-Token:") || ""; if (!tok) break; ls.set("token", tok); continue;
+    }
+    if (!r.ok) { $("#msg").innerHTML = `<div class="err">${esc(d.error || r.statusText)}</div>`; break; }
+    apply(d); renderStatus(); return;
+  }
+  render(); renderStatus();
+}
+
+const sections = zone => [...document.querySelectorAll(zone === "status" ? "#status section.grp" : "#view section.grp")];
+
+function collectLinks(extra = {}) {
+  const assign = {}, order = [];
+  for (const sec of sections("links")) for (const c of sec.querySelectorAll(".card")) {
+    order.push(c.dataset.key);
+    if (c.dataset.g !== sec.dataset.group) assign[c.dataset.key] = sec.dataset.group;
+  }
+  return { groups: sections("links").map(s => s.dataset.group), order, assign, ...extra };
+}
+function collectStatus(groupsOverride) {
+  const items = {}, order = [];
+  for (const sec of sections("status")) for (const c of sec.querySelectorAll(".node")) {
+    order.push(c.dataset.key); items[c.dataset.key] = sec.dataset.group;
+  }
+  return { status: { groups: groupsOverride || sections("status").map(s => s.dataset.group), items, order } };
+}
+const commit = zone => postLayout(zone === "status" ? collectStatus() : collectLinks());
+
+function cardAfter(grid, x, y) {
+  for (const c of grid.querySelectorAll(":scope > .card:not(.dragging), :scope > .node:not(.dragging)")) {
+    const r = c.getBoundingClientRect();
+    if (y < r.top || (y <= r.bottom && x < r.left + r.width / 2)) return c;
+  }
+  return null;
+}
+
+document.addEventListener("dragstart", e => {
+  if (!arranging) return;
+  const h = e.target.closest?.(".handle");
+  if (h) { dragSec = h.closest("section.grp"); dragSec.classList.add("dragging"); }
+  else {
+    dragEl = e.target.closest?.(".card, .node");
+    if (!dragEl) return;
+    dragEl.classList.add("dragging");
+  }
+  e.dataTransfer.effectAllowed = "move";
+  e.dataTransfer.setData("text/plain", "");
+});
+document.addEventListener("dragover", e => {
+  if (!arranging || !(dragEl || dragSec)) return;
+  e.preventDefault();
+  if (dragEl) {
+    const zone = dragEl.dataset.zone;
+    const sec = e.target.closest?.("section.grp");
+    const grid = e.target.closest?.(`[data-zone="${zone}"].grid, [data-zone="${zone}"].sgrid`) ||
+                 sec?.querySelector(`[data-zone="${zone}"]:is(.grid, .sgrid)`);
+    if (!grid) return;
+    const after = cardAfter(grid, e.clientX, e.clientY);
+    if (after) { if (after !== dragEl.nextSibling) grid.insertBefore(dragEl, after); }
+    else if (grid.lastElementChild !== dragEl) grid.appendChild(dragEl);
+  } else {
+    const other = e.target.closest?.("section.grp");
+    if (!other || other === dragSec || other.parentNode !== dragSec.parentNode) return;
+    const r = other.getBoundingClientRect();
+    other.parentNode.insertBefore(dragSec, e.clientY < r.top + r.height / 2 ? other : other.nextSibling);
+  }
+});
+document.addEventListener("drop", e => { if (arranging && (dragEl || dragSec)) e.preventDefault(); });
+document.addEventListener("dragend", () => {
+  if (!arranging || !(dragEl || dragSec)) return;
+  const zone = dragEl ? dragEl.dataset.zone : (dragSec.closest("#status") ? "status" : "links");
+  (dragEl || dragSec).classList.remove("dragging");
+  dragEl = dragSec = null;
+  commit(zone);
+});
+
+/* Umbenennen, Löschen, Hinzufügen */
+document.addEventListener("change", e => {
+  const inp = e.target.closest?.(".gname");
+  if (!inp) return;
+  const old = inp.dataset.old, nn = inp.value.trim(), zone = inp.dataset.zone;
+  if (!nn || nn === old) { inp.value = old; return; }
+  if (sections(zone).some(s => s.dataset.group === nn)) { alert(`„${nn}“ gibt es schon.`); inp.value = old; return; }
+  const sec = inp.closest("section.grp");
+  sec.dataset.group = nn;
+  postLayout(zone === "status" ? collectStatus() : collectLinks());
+});
+document.addEventListener("keydown", e => { if (e.key === "Enter" && e.target.classList?.contains("gname")) e.target.blur(); });
+document.addEventListener("click", e => {
+  const del = e.target.closest?.("[data-del]");
+  if (del) {
+    const zone = del.dataset.zone, g = del.dataset.del;
+    if (zone === "status") postLayout(collectStatus(sections("status").map(s => s.dataset.group).filter(x => x !== g)));
+    else postLayout({ ...collectLinks(), groups: sections("links").map(s => s.dataset.group).filter(x => x !== g) });
+    return;
+  }
+  const add = e.target.closest?.("[data-add]");
+  if (add) {
+    const zone = add.dataset.add, have = sections(zone).map(s => s.dataset.group);
+    let name = zone === "status" ? "Neue Gruppe" : "Neue Kategorie", i = 2;
+    while (have.includes(name)) name = (zone === "status" ? "Neue Gruppe " : "Neue Kategorie ") + i++;
+    const body = zone === "status" ? collectStatus([...have, name]) : { ...collectLinks(), groups: [...have, name] };
+    postLayout(body).then(() => {
+      const inp = [...document.querySelectorAll(".gname")].find(x => x.value === name);
+      if (inp) { inp.focus(); inp.select(); }
+    });
+  }
+});
+$("#arrange").onclick = () => setArranging(!arranging);
 
 /* Events */
 $("#view").addEventListener("click", async e => {

@@ -15,6 +15,9 @@ Jede Route wird bis zum Ziel verfolgt und mit **Proxmox** (LXC + VMs) und **Dock
 - **Proxmox-Status** oben: alle Nodes mit CPU, RAM, Root-Disk + ausgewählte Storages (z. B. `/mnt/share`)
 - **Telegram-Alarme** (im Panel unter 🔔 einstellbar), wenn CPU/RAM (optional Disk) eine Grenze für eine Weile überschreiten, plus Entwarnung und Node-offline-Meldung
 - **Jede Kachel anpassbar** (✎): Name, Icon, Gruppe, Beschreibung, URL, ausblenden. Icons per Name aus [dashboardicons.com](https://dashboardicons.com) oder URL, ohne Angabe wird automatisch nach Name/Subdomain gesucht
+- **Anordnen** (✥): Kacheln und Proxmox-Hosts per Drag & Drop in Kategorien verschieben, Kategorien umbenennen,
+  sortieren, anlegen und leere entfernen. Auf dem Handy mit ↑/↓ und Kategorie-Auswahl. Gespeichert in `/data/layout.json`
+- **Mobil**: kompakter Header, Suche in eigener Zeile, Statusleiste in drei Spalten, Dialoge in voller Breite
 - **Eigene Einträge** über „+ Eintrag“ (bearbeiten per ✎ auf der Kachel), gespeichert im Volume `/data/custom.json`
 - Suche mit `/`, `Enter` öffnet den ersten Treffer
 - Nur Python-Standardbibliothek, Image ~50 MB, alle Quellen nur lesend
@@ -137,6 +140,7 @@ Hinweis: Kopieren in die Zwischenablage funktioniert auch über `http://`, im Br
 - `GET /api/refresh` – sofort neu abrufen
 - `POST /api/custom` – eigenen Eintrag anlegen/ändern (JSON: `name`, `url`, `group`, `description`, `origin`, `icon`, bei Änderung `id`)
 - `DELETE /api/custom/<id>`
+- `POST /api/layout` – Kategorien/Reihenfolge (JSON: `groups`, `order`, `assign`, `status`)
 - `POST /api/override` – Anpassung einer Kachel (JSON: `key` + `name`, `icon`, `group`, `description`, `url`, `hide`; nur `key` = zurücksetzen)
 - `GET /api/status` – Proxmox-Nodes und Storages
 - `GET /api/settings`, `POST /api/settings` – Alarm-Einstellungen
