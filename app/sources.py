@@ -4,6 +4,7 @@ import json
 import logging
 import socket
 import ssl
+import urllib.error
 import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
@@ -47,46 +48,121 @@ class Proxmox:
         with urllib.request.urlopen(req, context=self.ctx, timeout=8) as r:
             return json.loads(r.read())["data"]
 
-    def _ips_lxc(self, g):
-        ips = set()
-        try:
-            for i in self._get(f"/nodes/{g['node']}/lxc/{g['vmid']}/interfaces") or []:
-                if _skip_if(i.get("name")):
-                    continue
-                for key in ("inet", "ip-addresses"):
-                    v = i.get(key)
-                    if isinstance(v, str):
-                        ips.add(v.split("/")[0])
-                    elif isinstance(v, list):
-                        ips.update(a.get("ip-address", "") for a in v)
-        except Exception:
-            pass
-        if not ips:  # gestoppt oder alte PVE-Version: statische IP aus der Config
+    @staticmethod
+    def _why(e, agent=False):
+        """Verständlicher Grund für einen API-Fehler."""
+        if isinstance(e, urllib.error.HTTPError):
             try:
-                cfg = self._get(f"/nodes/{g['node']}/lxc/{g['vmid']}/config")
-                for k, v in cfg.items():
-                    if k.startswith("net") and "ip=" in v:
-                        ip = v.split("ip=")[1].split(",")[0].split("/")[0]
-                        if ip not in ("dhcp", "manual"):
-                            ips.add(ip)
+                body = e.read().decode("utf-8", "replace")
             except Exception:
-                pass
+                body = ""
+            low = body.lower()
+            if e.code == 401:
+                return "Token ungültig oder abgelaufen (401)"
+            if e.code == 403:
+                return ("keine Rechte (Token braucht VM.GuestAgent.Audit bzw. VM.Monitor)" if agent
+                        else "keine Rechte (Token braucht die Rolle PVEAuditor auf /)")
+            if "not running" in low or "no qemu guest agent" in low or "not configured" in low:
+                return "QEMU Guest Agent läuft nicht in der VM"
+            return f"API-Fehler {e.code}"
+        if isinstance(e, urllib.error.URLError):
+            return f"nicht erreichbar ({e.reason})"
+        return str(e)[:160]
+
+    @staticmethod
+    def _cfg_ips(cfg, prefixes):
+        """Statische IPs aus LXC-netX (ip=) bzw. VM-cloud-init ipconfigX (ip=)."""
+        ips = set()
+        for k, v in (cfg or {}).items():
+            if any(k.startswith(p) for p in prefixes) and isinstance(v, str) and "ip=" in v:
+                ip = v.split("ip=")[1].split(",")[0].split("/")[0]
+                if ip not in ("dhcp", "manual", "auto"):
+                    ips.add(ip)
         return ips
 
-    def _ips_qemu(self, g):
-        ips = set()
-        if g.get("status") != "running":
-            return ips
+    def _ips_lxc(self, g):
+        ips, err = set(), None
+        if g.get("status") == "running":
+            try:
+                for i in self._get(f"/nodes/{g['node']}/lxc/{g['vmid']}/interfaces") or []:
+                    if _skip_if(i.get("name")):
+                        continue
+                    for key in ("inet", "ip-addresses"):
+                        v = i.get(key)
+                        if isinstance(v, str):
+                            ips.add(v.split("/")[0])
+                        elif isinstance(v, list):
+                            ips.update(a.get("ip-address", "") for a in v)
+                if ips:
+                    return ips, "live", None
+            except Exception as e:
+                err = self._why(e)
         try:
-            res = self._get(f"/nodes/{g['node']}/qemu/{g['vmid']}/agent/network-get-interfaces")
-            for i in res.get("result", []):
-                if _skip_if(i.get("name")):
-                    continue
-                for a in i.get("ip-addresses", []):
-                    ips.add(a.get("ip-address", ""))
+            ips = self._cfg_ips(self._get(f"/nodes/{g['node']}/lxc/{g['vmid']}/config"), ("net",))
+            if ips:
+                return ips, "config", None
+        except Exception as e:
+            err = err or self._why(e)
+        return set(), None, err or "DHCP ohne laufenden Container – keine IP bekannt"
+
+    def _ips_qemu(self, g):
+        cfg, err = {}, None
+        try:
+            cfg = self._get(f"/nodes/{g['node']}/qemu/{g['vmid']}/config") or {}
+        except Exception as e:
+            err = self._why(e)
+        agent_on = str(cfg.get("agent", "")).split(",")[0] in ("1", "enabled=1")
+        if g.get("status") == "running" and agent_on:
+            try:
+                res = self._get(f"/nodes/{g['node']}/qemu/{g['vmid']}/agent/network-get-interfaces")
+                ips = set()
+                for i in res.get("result", []):
+                    if _skip_if(i.get("name")):
+                        continue
+                    for a in i.get("ip-addresses", []):
+                        ips.add(a.get("ip-address", ""))
+                if ips:
+                    return ips, "agent", None
+            except Exception as e:
+                err = self._why(e, agent=True)
+        elif g.get("status") == "running" and not err:
+            err = "Guest Agent in den VM-Optionen nicht aktiviert"
+        ips = self._cfg_ips(cfg, ("ipconfig",))
+        if ips:
+            return ips, "cloud-init", None
+        if g.get("status") != "running":
+            err = err or "VM gestoppt"
+        return set(), None, err
+
+    def node_hosts(self):
+        """Die Proxmox-Nodes selbst als Ziel (Web-UI :8006, PBS auf dem Host …), mit allen Host-IPs."""
+        out = []
+        try:
+            status = {n["name"]: n for n in self._get("/cluster/status") if n.get("type") == "node"}
         except Exception:
-            pass  # kein Guest-Agent / keine Rechte
-        return ips
+            status = {}
+        try:
+            names = [r["node"] for r in self._get("/nodes")]
+        except Exception:
+            names = list(status)
+        for name in names:
+            ips = set()
+            if status.get(name, {}).get("ip"):
+                ips.add(status[name]["ip"])
+            try:
+                for i in self._get(f"/nodes/{name}/network") or []:
+                    for k in ("address", "address6"):
+                        if i.get(k):
+                            ips.add(str(i[k]).split("/")[0])
+                    if i.get("cidr"):
+                        ips.add(str(i["cidr"]).split("/")[0])
+            except Exception:
+                pass
+            online = status.get(name, {}).get("online", 1)
+            out.append({"cluster": self.name, "kind": "node", "vmid": "", "name": name, "node": name,
+                        "status": "running" if online else "stopped", "ips": sorted(ips),
+                        "ip_source": "node", "ip_error": None if ips else "keine Host-IP lesbar (Sys.Audit?)"})
+        return out
 
     def status(self, wanted=()):
         """Nodes (CPU/RAM/Root-Disk) + ausgewählte Storages (per ID oder Pfad, z. B. /mnt/share)."""
@@ -127,9 +203,10 @@ class Proxmox:
         items = [g for g in self._get("/cluster/resources?type=vm") if g.get("template", 0) != 1]
 
         def enrich(g):
-            ips = self._ips_lxc(g) if g["type"] == "lxc" else self._ips_qemu(g)
+            ips, src, err = self._ips_lxc(g) if g["type"] == "lxc" else self._ips_qemu(g)
             ips = {ip for ip in ips if ip and ip not in ("127.0.0.1", "::1") and not ip.lower().startswith("fe80")}
             return {
+                "ip_source": src if ips else None, "ip_error": None if ips else err,
                 "cluster": self.name,
                 "kind": g["type"],  # lxc | qemu
                 "vmid": g["vmid"], "name": g.get("name", str(g["vmid"])),
@@ -138,7 +215,8 @@ class Proxmox:
             }
 
         with ThreadPoolExecutor(8) as ex:
-            return list(ex.map(enrich, items))
+            guests = list(ex.map(enrich, items))
+        return guests + self.node_hosts()
 
 
 # --------------------------------------------------------------------------- Docker

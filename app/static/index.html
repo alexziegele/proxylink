@@ -339,7 +339,7 @@ function iconFail(img) {
 
 function esc(s) { return String(s ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 const multiPve = () => (D.sources?.proxmox || []).length > 1;
-const kindLabel = g => (g.kind === "lxc" ? "LXC " : "VM ") + g.vmid;
+const kindLabel = g => g.kind === "node" ? "Node" : (g.kind === "lxc" ? "LXC " : "VM ") + g.vmid;
 const stateWord = { up: "online", warn: "teilweise erreichbar", down: "offline", unknown: "Status unbekannt" };
 const EYE_OFF = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2 2l12 12"/><path d="M6.6 3.7A6.6 6.6 0 0 1 8 3.5c3.6 0 6 4.5 6 4.5a11 11 0 0 1-1.8 2.4M4.2 5A11 11 0 0 0 2 8s2.4 4.5 6 4.5a6 6 0 0 0 2.7-.6"/><path d="M6.6 6.6a2 2 0 0 0 2.8 2.8"/></svg>`;
 const COPY_ICON = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="5" y="5" width="9" height="9" rx="1.5"/><path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2h-6A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5"/></svg>`;
@@ -425,6 +425,33 @@ function renderLinks(q) {
     (arranging ? `<button class="btn add-group" data-add="links">+ Kategorie</button>` : "");
 }
 
+function renderDiag() {
+  const dg = D.diag || [];
+  if (!dg.length) return "";
+  const missing = dg.flatMap(c => c.missing.map(m => ({ ...m, cluster: c.cluster })));
+  const running = missing.filter(m => m.status === "running");
+  return `
+    <h2>Diagnose Proxmox</h2>
+    <div class="wrap"><table>
+      <tr><th>Cluster</th><th>API</th><th>Gäste mit IP</th><th>Nodes</th></tr>
+      ${dg.map(c => `<tr>
+        <td>${esc(c.cluster)}<div class="sub">${esc(c.url)}</div></td>
+        <td class="${c.ok ? "s-up" : "s-down"}">${c.ok ? "ok" : esc(c.error || "Fehler")}</td>
+        <td class="${c.with_ip < c.guests ? "s-warn" : "s-up"}">${c.ok ? `${c.with_ip} / ${c.guests}` : "–"}</td>
+        <td>${c.nodes.map(n => `${esc(n.name)} <span class="sub">${esc(n.ips.join(", ") || "–")}</span>`).join("<br>") || "–"}</td>
+      </tr>`).join("")}
+    </table></div>
+    ${running.length ? `
+    <h2>Laufende Gäste ohne bekannte IP <small>(${running.length}) – Routen dorthin können nicht zugeordnet werden</small></h2>
+    <div class="wrap"><table>
+      <tr><th>Cluster</th><th>Gast</th><th>Grund</th></tr>
+      ${running.map(m => `<tr><td>${esc(m.cluster)}</td><td>${esc(m.label)}</td><td class="sub s-warn">${esc(m.reason)}</td></tr>`).join("")}
+    </table></div>
+    <p class="empty" style="margin-top:8px">Abhilfe: In der VM <code>qemu-guest-agent</code> installieren und starten, in Proxmox unter
+      VM → Optionen → „QEMU Guest Agent“ aktivieren (danach VM einmal neu starten). Alternativ eine feste IP per Cloud-Init
+      setzen oder die IP im DNS (z.&nbsp;B. OPNsense) mit dem VM-Namen eintragen.</p>` : ""}`;
+}
+
 function renderAudit(q) {
   const rows = [];
   for (const l of D.links.filter(l => matches(l, q))) {
@@ -435,7 +462,8 @@ function renderAudit(q) {
         <td><a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.domain)}</a>${l.custom ? ` <span class="tag">eigen</span>` : ""}</td>
         <td>${esc(t.addr)}<div class="sub">${t.ip ? esc(t.ip + ":" + t.port) : (t.container ? "Docker-Netzwerk" : t.host ? "DNS nicht auflösbar" : "")}</div></td>
         <td>${t.guest ? `<span class="tag">${esc(kindLabel(t.guest))}</span> ${esc(t.guest.name)}
-              <div class="sub">${multiPve() ? esc(t.guest.cluster) + " / " : ""}${esc(t.guest.node)} · ${esc(t.guest.status)}</div>` : `<span class="sub">—</span>`}</td>
+              <div class="sub">${multiPve() ? esc(t.guest.cluster) + " / " : ""}${esc(t.guest.node)} · ${esc(t.guest.status)}${t.via_ptr ? " · per DNS" : ""}</div>`
+            : t.reason && !t.container ? `<span class="sub s-warn">${esc(t.reason)}</span>` : `<span class="sub">—</span>`}</td>
         <td>${t.container ? `🐳 ${esc(t.container.name)}<div class="sub">${esc(t.container.host)} · ${esc(t.container.status)}</div>`
               : `<span class="sub">—</span>`}</td>
         <td class="s-${st}">${txt}</td>
@@ -444,10 +472,10 @@ function renderAudit(q) {
   }
   const unmatched = D.links.filter(l => !l.matched && matches(l, q));
   const qf = x => !q || JSON.stringify(x).toLowerCase().includes(q);
-  const freeGuests = D.guests.filter(g => !g.routed && qf(g));
+  const freeGuests = D.guests.filter(g => !g.routed && g.kind !== "node" && qf(g));
   const freeConts = D.containers.filter(c => !c.routed && c.ports.length && qf(c));
 
-  return `
+  return renderDiag() + `
     <h2>Routen → Ziel <small>(${rows.length})</small></h2>
     <div class="wrap"><table>
       <tr><th>Domain</th><th>Origin</th><th>Proxmox</th><th>Docker</th><th>Status</th></tr>
@@ -456,8 +484,9 @@ function renderAudit(q) {
 
     <h2>Routen ohne bekanntes Ziel <small>(${unmatched.length})</small></h2>
     ${unmatched.length ? `<div class="wrap"><table>
-      <tr><th>Domain</th><th>Origin</th></tr>
-      ${unmatched.map(l => `<tr><td>${esc(l.domain)}</td><td>${esc(l.origins.map(o => o.addr).join(", "))}</td></tr>`).join("")}
+      <tr><th>Domain</th><th>Origin</th><th>Grund</th></tr>
+      ${unmatched.map(l => `<tr><td>${esc(l.domain)}</td><td>${esc(l.origins.map(o => o.addr).join(", "))}</td>
+        <td class="sub">${esc((l.targets || []).map(t => t.reason).filter(Boolean).join(" · ") || "—")}</td></tr>`).join("")}
     </table></div>` : `<p class="empty">Alle Routen sind einem Gast oder Container zugeordnet.</p>`}
 
     ${(D.sources.proxmox || []).length ? `

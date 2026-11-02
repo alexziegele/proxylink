@@ -18,7 +18,9 @@ import urllib.parse
 import urllib.request
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
-from sources import parse_docker_hosts, parse_proxmox
+from sources import Proxmox, parse_docker_hosts, parse_proxmox
+
+Proxmox_why = Proxmox._why
 from store import read_json, write_json, check_writable
 from monitor import Monitor, telegram, save_settings, public_settings, load_settings, SETTINGS_FILE
 
@@ -378,6 +380,19 @@ def resolve(host):
     return _dns[host]
 
 
+_ptr = {}
+
+
+def ptr_name(ip):
+    """Reverse-DNS (z. B. aus OPNsense/Unbound-DHCP-Registrierung) → Kurzname."""
+    if ip not in _ptr:
+        try:
+            _ptr[ip] = socket.gethostbyaddr(ip)[0].split(".")[0].lower()
+        except OSError:
+            _ptr[ip] = None
+    return _ptr[ip]
+
+
 def split_addr(addr, tls):
     a = re.sub(r"^\w+://", "", addr).split("/")[0]
     if a.startswith("["):  # IPv6
@@ -420,13 +435,27 @@ def trace(links, guests, containers):
         if not guest:
             short = host.split(".")[0].lower()
             guest = next((g for g in guests if g["name"].lower() == short), None)
+        # 5) Fallback: Reverse-DNS der IP = Gastname (hilft bei VMs ohne Guest Agent)
+        via_ptr = False
+        if not guest and not cont and ip:
+            name = ptr_name(ip)
+            guest = next((g for g in guests if name and g["name"].lower() == name), None)
+            via_ptr = bool(guest)
+        reason = None
+        if not guest and not cont:
+            if not ip:
+                reason = f"„{host}“ lässt sich nicht auflösen"
+            else:
+                no_ip = [g for g in guests if not g["ips"] and g["kind"] != "node"]
+                reason = f"IP {ip} gehört keinem bekannten Gast/Container" + \
+                         (f" – {len(no_ip)} Gäste ohne bekannte IP, siehe Diagnose" if no_ip else "")
         reachable = tcp_ok(ip or host, port) if CHECK_ORIGINS and (ip or not cont) else None
         if cont:
             cont["routed"] = True
         if guest:
             guest["routed"] = True
         return {
-            **o, "host": host, "ip": ip, "port": port, "reachable": reachable,
+            **o, "host": host, "ip": ip, "port": port, "reachable": reachable, "reason": reason, "via_ptr": via_ptr,
             "guest": guest and {k: guest[k] for k in ("cluster", "kind", "vmid", "name", "node", "status")},
             "container": cont and {k: cont[k] for k in ("host", "name", "state", "status", "image")},
         }
@@ -487,7 +516,7 @@ def discover(links, guests, containers):
             g = next((g for g in guests if c["host_ip"] in g["ips"]), None)
             card(c["name"], c["host_ip"], c["ports"], guest=g, cont=c, desc=c["image"])
 
-    cand = [g for g in guests if g["status"] == "running" and not g["routed"]
+    cand = [g for g in guests if g["status"] == "running" and not g["routed"] and g["kind"] != "node"
             and g["ips"] and not docker_ips.intersection(g["ips"])]
     jobs = [(g, ip, p) for g in cand for ip in g["ips"] if ":" not in ip for p in PROBE_PORTS]
     with ThreadPoolExecutor(64) as ex:
@@ -509,6 +538,7 @@ class Cache:
         self.pves = parse_proxmox(os.environ)
         self.dockers = parse_docker_hosts(DOCKER_HOSTS)
         self.links, self.services, self.guests, self.containers = [], [], [], []
+        self.diag = []
         self.refresh_lock = threading.Lock()
         self.error, self.warnings, self.updated = None, [], 0
         self.storage_error = check_writable()
@@ -518,7 +548,7 @@ class Cache:
 
     def _inventory(self):
         """Proxmox-Gäste und Docker-Container parallel holen; Fehler einzelner Quellen sind nur Warnungen."""
-        warnings, guests, containers = [], [], []
+        warnings, guests, containers, failed = [], [], [], {}
         jobs = {}
         with ThreadPoolExecutor(8) as ex:
             for p in self.pves:
@@ -532,6 +562,21 @@ class Cache:
                 except Exception as e:
                     log.warning("%s nicht abrufbar: %s", name, e)
                     warnings.append(f"{name}: {e}")
+                    if name.startswith("Proxmox "):
+                        failed[name[len("Proxmox "):]] = Proxmox_why(e)
+        self.diag = []
+        for p in self.pves:
+            gs = [g for g in guests if g["cluster"] == p.name]
+            vms = [g for g in gs if g["kind"] != "node"]
+            self.diag.append({
+                "cluster": p.name, "url": p.url, "ok": p.name not in failed,
+                "error": failed.get(p.name),
+                "guests": len(vms), "with_ip": sum(1 for g in vms if g["ips"]),
+                "nodes": [{"name": g["name"], "ips": g["ips"]} for g in gs if g["kind"] == "node"],
+                "missing": [{"label": ("LXC " if g["kind"] == "lxc" else "VM ") + f"{g['vmid']} {g['name']}",
+                             "status": g["status"], "reason": g.get("ip_error") or "unbekannt"}
+                            for g in vms if not g["ips"]],
+            })
         return guests, containers, warnings
 
     def refresh(self):
@@ -593,7 +638,7 @@ class Cache:
             return {"title": TITLE, "links": self.links, "error": self.error, "updated": self.updated,
                     "warnings": self.warnings, "services": self.services,
                     "edit_protected": bool(EDIT_TOKEN), "layout": load_layout(),
-                    "storage_error": self.storage_error, "zoraxy_url": ZORAXY_URL, "guests": self.guests, "containers": self.containers,
+                    "storage_error": self.storage_error, "diag": self.diag, "zoraxy_url": ZORAXY_URL, "guests": self.guests, "containers": self.containers,
                     "sources": {"proxmox": [p.name for p in self.pves], "docker": [d.name for d in self.dockers]}}
 
 

@@ -105,6 +105,16 @@ Für jeden Origin (`host:port`) einer Zoraxy-Regel:
 
 IPs von `lo`, `docker*`, `br-*`, `veth*` usw. werden bei Gästen ignoriert.
 
+Woher die IPs kommen:
+
+- **LXC:** laufende Interfaces, sonst statische `ip=` aus der Config
+- **VM:** QEMU Guest Agent, sonst Cloud-Init `ipconfigN`, sonst Reverse-DNS der Ziel-IP = VM-Name
+- **Proxmox-Nodes selbst:** alle Host-IPs (auch VLAN-Bridges wie `vmbr0.60`) – für Routen auf `:8006`, PBS auf dem Host usw.
+
+Im Tab **Abgleich → Diagnose Proxmox** steht je Cluster, ob die API erreichbar ist, wie viele Gäste eine IP haben
+und bei jedem laufenden Gast ohne IP der Grund (Agent läuft nicht, Agent nicht aktiviert, fehlende Rechte …).
+Bei offenen Routen steht der Grund direkt daneben.
+
 ## Overrides
 
 `config/overrides.json` – pro Domain optional Name, Gruppe, Icon, Beschreibung, eigene URL oder ausblenden:
