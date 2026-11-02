@@ -6,6 +6,10 @@ Jede Route wird bis zum Ziel verfolgt und mit **Proxmox** (LXC + VMs) und **Dock
 - **Links**: Kacheln pro Zoraxy-Tag, Status-Punkt (online / teilweise / offline), Ziel z. B. `LXC 105 docker01 → 🐳 jellyfin`
 - **Abgleich**: Route → Origin → Proxmox-Gast → Container → Port erreichbar?
   Dazu: Routen ohne bekanntes Ziel, Proxmox-Gäste ohne Route, Container mit veröffentlichten Ports ohne Route
+- **Ohne Proxy**: laufende Dienste ohne Zoraxy-Route (Container mit veröffentlichten Ports, offene Ports auf Proxmox-Gästen) erscheinen als gestrichelte Kacheln
+- In Zoraxy deaktivierte Proxies werden ausgegraut und mit Aus-Schalter markiert
+- Unter jeder Kachel `ip:port` zum Kopieren
+- **Eigene Einträge** über „+ Eintrag“ (bearbeiten per ✎ auf der Kachel), gespeichert im Volume `/data/custom.json`
 - Suche mit `/`, `Enter` öffnet den ersten Treffer
 - Nur Python-Standardbibliothek, Image ~50 MB, alle Quellen nur lesend
 
@@ -31,7 +35,10 @@ Dann `http://<host>:8080` öffnen.
 | `DOCKER_HOSTS` | `name=url[@host-ip]`, mehrere mit `;` |
 | `LINK_SCHEME` | `https` oder `http` für die erzeugten Links |
 | `CHECK_ORIGINS` | TCP-Check auf jeden Origin (`true`) |
-| `SHOW_DISABLED` | deaktivierte Regeln mit anzeigen |
+| `SHOW_DISABLED` | deaktivierte Regeln mit anzeigen (Standard `true`) |
+| `SHOW_UNPROXIED` | Dienste ohne Proxy-Route anzeigen (Standard `true`) |
+| `PROBE_PORTS` | Ports, die auf Proxmox-Gästen ohne Route geprüft werden |
+| `EDIT_TOKEN` | optional: Token, ohne den keine eigenen Einträge angelegt/gelöscht werden können |
 | `EXCLUDE` | Domains mit diesen Teilstrings ausblenden, kommagetrennt |
 | `REFRESH_SECONDS` | Abrufintervall (Standard 60) |
 
@@ -81,8 +88,18 @@ IPs von `lo`, `docker*`, `br-*`, `veth*` usw. werden bei Gästen ignoriert.
 
 Ohne Override ist die Gruppe der erste Zoraxy-Tag (sonst „Allgemein“).
 
+## Dienste ohne Proxy
+
+- **Docker:** laufende Container mit veröffentlichten Ports, deren `host-ip:port` von keiner Route genutzt wird
+- **Proxmox:** laufende Gäste ohne Route (und die kein Docker-Host sind) werden auf `PROBE_PORTS` geprüft; offene Ports → Kachel
+- Ausblenden über `overrides.json` mit dem Container-/Gastnamen oder `ip:port` als Schlüssel: `{ "uptime-kuma": { "hide": true } }`
+
+Hinweis: Kopieren in die Zwischenablage funktioniert auch über `http://`, im Browser ist dafür ein Fallback eingebaut.
+
 ## API
 
 - `GET /api/links` – zwischengespeicherter Stand (Links, Gäste, Container)
 - `GET /api/refresh` – sofort neu abrufen
+- `POST /api/custom` – eigenen Eintrag anlegen/ändern (JSON: `name`, `url`, `group`, `description`, `origin`, `icon`, bei Änderung `id`)
+- `DELETE /api/custom/<id>`
 - `GET /health`

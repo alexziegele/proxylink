@@ -6,61 +6,98 @@
 <title>proxylink</title>
 <style>
   :root {
-    --bg: #0f1216; --card: #171b21; --card-h: #1e232b; --line: #262c35;
+    --bg: #0f1216; --card: #171b21; --card-h: #1e232b; --line: #262c35; --chip: #20262e;
     --text: #e6e9ee; --muted: #8a93a1; --accent: #5aa9e6;
-    --up: #4cb782; --warn: #e2b340; --down: #e66a5a; --unk: #6b7380;
+    --up: #4cb782; --warn: #e2b340; --down: #e66a5a; --unk: #6b7380; --sw: #4a525e;
   }
   @media (prefers-color-scheme: light) {
-    :root { --bg: #f4f5f7; --card: #fff; --card-h: #f0f3f7; --line: #e1e4e9;
-            --text: #1a1d22; --muted: #6b7380; --accent: #1f6fb2; }
+    :root { --bg: #f4f5f7; --card: #fff; --card-h: #f0f3f7; --line: #e1e4e9; --chip: #f1f3f6;
+            --text: #1a1d22; --muted: #6b7380; --accent: #1f6fb2; --sw: #c3c8d0; }
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text);
          font: 15px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
   main { max-width: 1180px; margin: 0 auto; padding: 36px 20px 60px; }
-  header { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 22px; }
+  header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 22px; }
   h1 { margin: 0; font-size: 26px; font-weight: 650; letter-spacing: -.01em; }
   #clock { color: var(--muted); font-variant-numeric: tabular-nums; }
   .spacer { flex: 1; }
-  #search { width: 240px; max-width: 100%; padding: 8px 12px; border-radius: 8px;
-            border: 1px solid var(--line); background: var(--card); color: var(--text); font: inherit; }
-  #search:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  input, select { font: inherit; color: var(--text); background: var(--card); border: 1px solid var(--line);
+                  border-radius: 8px; padding: 8px 12px; }
+  input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  #search { width: 220px; max-width: 100%; }
   nav { display: flex; gap: 2px; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 3px; }
   nav button { background: none; border: 0; color: var(--muted); font: inherit; padding: 5px 12px; border-radius: 6px; cursor: pointer; }
   nav button.on { background: var(--card-h); color: var(--text); }
+  .btn { font: inherit; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--card);
+         color: var(--text); cursor: pointer; }
+  .btn:hover { border-color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.danger { color: var(--down); }
   h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted);
        font-weight: 600; margin: 26px 0 10px; }
   h2 small { text-transform: none; letter-spacing: 0; font-weight: 400; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
-  a.card { position: relative; display: flex; gap: 12px; align-items: center; padding: 12px 14px; border-radius: 10px;
-           background: var(--card); border: 1px solid var(--line); color: inherit; text-decoration: none;
-           transition: background .12s, border-color .12s; min-width: 0; }
-  a.card:hover, a.card:focus-visible { background: var(--card-h); border-color: var(--accent); outline: none; }
+
+  /* Kacheln */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; }
+  .card { position: relative; display: flex; flex-direction: column; border-radius: 10px; min-width: 0;
+          background: var(--card); border: 1px solid var(--line); transition: background .12s, border-color .12s; }
+  .card:hover { background: var(--card-h); border-color: var(--accent); }
+  .card.unp { border-style: dashed; }
+  a.main { display: flex; gap: 12px; align-items: center; padding: 12px 34px 8px 14px; color: inherit;
+           text-decoration: none; min-width: 0; border-radius: 10px 10px 0 0; }
+  a.main:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
   .ic { flex: none; width: 36px; height: 36px; border-radius: 8px; display: grid; place-items: center;
         font-weight: 700; font-size: 16px; color: #fff; overflow: hidden; }
   .ic img { width: 100%; height: 100%; object-fit: contain; }
   .tx { min-width: 0; flex: 1; }
   .nm { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .dm { color: var(--muted); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .dot { position: absolute; top: 9px; right: 9px; width: 8px; height: 8px; border-radius: 50%; background: var(--unk); }
+  .card.off a.main { opacity: .5; }
+  .st { position: absolute; top: 10px; right: 10px; display: flex; align-items: center; gap: 6px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--unk); }
   .dot.up { background: var(--up); } .dot.warn { background: var(--warn); } .dot.down { background: var(--down); }
-  .off { opacity: .45; }
+  .sw { width: 24px; height: 14px; border-radius: 7px; background: var(--sw); position: relative; }
+  .sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 50%; background: #fff; }
+  .edit { position: absolute; right: 8px; top: 28px; background: none; border: 0; color: var(--muted); cursor: pointer;
+          font-size: 14px; padding: 2px 4px; opacity: 0; transition: opacity .12s; }
+  .card:hover .edit, .edit:focus-visible { opacity: 1; }
+  .edit:hover { color: var(--accent); }
+  .addrs { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 12px 10px 62px; }
+  .cp { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace;
+        color: var(--muted); background: var(--chip); border: 1px solid transparent; border-radius: 5px; padding: 2px 6px; cursor: pointer; }
+  .cp span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cp:hover { color: var(--text); border-color: var(--line); }
+  .cp svg { flex: none; width: 11px; height: 11px; }
+  .cp.ok { color: var(--up); }
+
+  /* Abgleich */
   table { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--line);
           border-radius: 10px; overflow: hidden; font-size: 13.5px; }
   th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
   th { color: var(--muted); font-weight: 600; font-size: 12px; background: var(--card-h); }
   tr:last-child td { border-bottom: 0; }
   td .sub { color: var(--muted); font-size: 12px; }
+  td a { color: var(--accent); text-decoration: none; } td a:hover { text-decoration: underline; }
   .tag { display: inline-block; padding: 1px 7px; border-radius: 5px; font-size: 12px; background: var(--card-h);
          border: 1px solid var(--line); white-space: nowrap; }
-  .s-up { color: var(--up); } .s-down { color: var(--down); } .s-warn { color: var(--warn); } .s-unknown { color: var(--unk); }
+  .s-up { color: var(--up); } .s-down { color: var(--down); } .s-warn { color: var(--warn); } .s-unknown, .s-off { color: var(--unk); }
   .wrap { overflow-x: auto; }
-  td a { color: var(--accent); text-decoration: none; } td a:hover { text-decoration: underline; }
   .empty { color: var(--muted); font-size: 13.5px; padding: 4px 0; }
   #msg { margin-top: 18px; font-size: 13.5px; }
   #msg .err { color: var(--down); } #msg .wrn { color: var(--warn); }
   footer { margin-top: 40px; color: var(--muted); font-size: 12px; }
   footer button { background: none; border: none; color: var(--accent); cursor: pointer; font: inherit; padding: 0; }
+
+  /* Dialog */
+  dialog { border: 1px solid var(--line); border-radius: 12px; background: var(--card); color: var(--text);
+           padding: 22px; width: min(440px, 92vw); }
+  dialog::backdrop { background: rgba(0,0,0,.45); }
+  dialog h3 { margin: 0 0 14px; font-size: 17px; }
+  dialog label { display: block; font-size: 12.5px; color: var(--muted); margin: 10px 0 4px; }
+  dialog input { width: 100%; }
+  dialog .row { display: flex; gap: 8px; margin-top: 18px; }
+  dialog .err { color: var(--down); font-size: 13px; min-height: 1em; margin-top: 10px; }
 </style>
 </head>
 <body>
@@ -70,77 +107,111 @@
     <span id="clock"></span>
     <span class="spacer"></span>
     <nav><button data-v="links" class="on">Links</button><button data-v="audit">Abgleich</button></nav>
+    <button class="btn" id="add">+ Eintrag</button>
     <input id="search" type="search" placeholder="Suchen…  ( / )" autocomplete="off">
   </header>
   <div id="view"></div>
   <div id="msg"></div>
   <footer><span id="upd"></span> · <button id="reload">jetzt neu laden</button></footer>
 </main>
+
+<dialog id="dlg">
+  <form id="form" method="dialog">
+    <h3 id="dlg-title">Eigener Eintrag</h3>
+    <input type="hidden" name="id">
+    <label>Name *</label><input name="name" required>
+    <label>URL *</label><input name="url" required placeholder="https://… oder 192.168.10.20:8080">
+    <label>Gruppe</label><input name="group" list="groups" placeholder="Eigene">
+    <datalist id="groups"></datalist>
+    <label>Beschreibung</label><input name="description">
+    <label>IP:Port (optional, für Kopieren &amp; Status)</label><input name="origin" placeholder="192.168.10.20:8080">
+    <label>Icon-URL (optional)</label><input name="icon" placeholder="https://…/icon.svg">
+    <div id="tok-wrap" hidden><label>Bearbeitungs-Token</label><input name="token" type="password"></div>
+    <div class="err" id="dlg-err"></div>
+    <div class="row">
+      <button class="btn primary" value="save">Speichern</button>
+      <button class="btn" value="cancel" formnovalidate>Abbrechen</button>
+      <span class="spacer"></span>
+      <button class="btn danger" value="delete" id="del" formnovalidate hidden>Löschen</button>
+    </div>
+  </form>
+</dialog>
+
 <script>
 const $ = s => document.querySelector(s);
-let D = { links: [], guests: [], containers: [], sources: {} };
-let view = localStorageGet("view") || "links";
+let D = { links: [], services: [], guests: [], containers: [], sources: {} };
+const ls = { get(k) { try { return localStorage.getItem("proxylink." + k); } catch { return null; } },
+             set(k, v) { try { localStorage.setItem("proxylink." + k, v); } catch {} } };
+let view = ls.get("view") || "links";
 
-function localStorageGet(k) { try { return localStorage.getItem("proxylink." + k); } catch { return null; } }
-function localStorageSet(k, v) { try { localStorage.setItem("proxylink." + k, v); } catch {} }
 function color(str) { let h = 0; for (const c of str) h = (h * 31 + c.charCodeAt(0)) % 360; return `hsl(${h} 45% 45%)`; }
 function esc(s) { return String(s ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 const kindLabel = g => (g.kind === "lxc" ? "LXC " : "VM ") + g.vmid;
-const stateWord = { up: "online", warn: "teilweise", down: "offline", unknown: "unbekannt" };
+const stateWord = { up: "online", warn: "teilweise erreichbar", down: "offline", unknown: "Status unbekannt" };
+const COPY_ICON = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="5" y="5" width="9" height="9" rx="1.5"/><path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2h-6A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5"/></svg>`;
 
 function targetText(l) {
-  const parts = [];
-  for (const t of l.targets || []) {
+  return (l.targets || []).map(t => {
     const p = [];
     if (t.guest) p.push(`${kindLabel(t.guest)} ${t.guest.name}`);
     if (t.container) p.push(`🐳 ${t.container.name}`);
-    if (p.length) parts.push(p.join(" → "));
-  }
-  return parts.join(" · ");
+    return p.join(" → ");
+  }).filter(Boolean).join(" · ");
 }
+const allItems = () => [...D.links, ...(D.services || [])];
+const matches = (l, q) => !q || [l.name, l.domain, l.group, l.description, targetText(l), ...(l.addrs || [])]
+  .join(" ").toLowerCase().includes(q);
 
-function matches(l, q) {
-  return !q || [l.name, l.domain, l.group, l.description, targetText(l), ...(l.origins || []).map(o => o.addr)]
-    .join(" ").toLowerCase().includes(q);
+function cardHTML(l, idx) {
+  const tgt = targetText(l);
+  const status = l.disabled
+    ? `<span class="sw" title="In Zoraxy deaktiviert"></span>`
+    : `<span class="dot ${l.state || ""}" title="${esc(stateWord[l.state || "unknown"])}"></span>`;
+  const sub = l.unproxied ? (l.description || "kein Proxy") : (l.description || l.domain);
+  return `
+  <div class="card${l.disabled ? " off" : ""}${l.unproxied ? " unp" : ""}">
+    <a class="main" href="${esc(l.url)}" target="_blank" rel="noopener">
+      <span class="ic" style="background:${l.icon ? "transparent" : color(l.domain)}">
+        ${l.icon ? `<img src="${esc(l.icon)}" alt="">` : esc((l.name[0] || "?").toUpperCase())}
+      </span>
+      <span class="tx">
+        <div class="nm">${esc(l.name)}</div>
+        <div class="dm">${esc(sub)}${l.disabled ? " · deaktiviert" : ""}</div>
+        ${tgt ? `<div class="dm">${esc(tgt)}</div>` : ""}
+      </span>
+    </a>
+    <span class="st">${status}</span>
+    ${l.custom ? `<button class="edit" data-edit="${esc(l.id)}" title="Bearbeiten">✎</button>` : ""}
+    ${(l.addrs || []).length ? `<div class="addrs">${l.addrs.map(a =>
+      `<button class="cp" data-copy="${esc(a)}" title="In Zwischenablage kopieren"><span>${esc(a)}</span>${COPY_ICON}</button>`).join("")}</div>` : ""}
+  </div>`;
 }
 
 function renderLinks(q) {
   const groups = {};
-  D.links.filter(l => matches(l, q)).forEach(l => (groups[l.group] ||= []).push(l));
-  const html = Object.entries(groups).map(([g, ls]) => `
-    <h2>${esc(g)}</h2>
-    <div class="grid">${ls.map(l => {
-      const tgt = targetText(l);
-      return `
-      <a class="card${l.disabled ? " off" : ""}" href="${esc(l.url)}" target="_blank" rel="noopener"
-         title="${esc((l.origins || []).map(o => o.addr).join(", ") + " – " + stateWord[l.state || "unknown"])}">
-        <span class="dot ${l.state || ""}"></span>
-        <span class="ic" style="background:${l.icon ? "transparent" : color(l.domain)}">
-          ${l.icon ? `<img src="${esc(l.icon)}" alt="">` : esc((l.name[0] || "?").toUpperCase())}
-        </span>
-        <span class="tx">
-          <div class="nm">${esc(l.name)}</div>
-          <div class="dm">${esc(l.description || l.domain)}</div>
-          ${tgt ? `<div class="dm">${esc(tgt)}</div>` : ""}
-        </span>
-      </a>`; }).join("")}
-    </div>`).join("");
-  return html || (D.links.length ? `<p class="empty">Keine Treffer.</p>` : "");
+  for (const l of allItems().filter(l => matches(l, q))) (groups[l.group] ||= []).push(l);
+  const order = Object.keys(groups).sort((a, b) =>
+    (a === "Ohne Proxy") - (b === "Ohne Proxy") || a.localeCompare(b, "de"));
+  const html = order.map(g => `
+    <h2>${esc(g)}${g === "Ohne Proxy" ? ` <small>· läuft, aber keine Zoraxy-Route</small>` : ""}</h2>
+    <div class="grid">${groups[g].map(cardHTML).join("")}</div>`).join("");
+  return html || (allItems().length ? `<p class="empty">Keine Treffer.</p>` : "");
 }
 
 function renderAudit(q) {
   const rows = [];
   for (const l of D.links.filter(l => matches(l, q))) {
-    for (const t of (l.targets || [{ addr: "—" }])) {
-      const st = t.reachable === false ? "down" : t.reachable ? "up" : "unknown";
+    for (const t of (l.targets?.length ? l.targets : [{ addr: "—" }])) {
+      const st = l.disabled ? "off" : t.reachable === false ? "down" : t.reachable ? "up" : "unknown";
+      const txt = l.disabled ? "deaktiviert" : t.reachable == null ? "–" : (t.reachable ? "erreichbar" : "nicht erreichbar");
       rows.push(`<tr>
-        <td><a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.domain)}</a></td>
+        <td><a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.domain)}</a>${l.custom ? ` <span class="tag">eigen</span>` : ""}</td>
         <td>${esc(t.addr)}<div class="sub">${t.ip ? esc(t.ip + ":" + t.port) : (t.container ? "Docker-Netzwerk" : t.host ? "DNS nicht auflösbar" : "")}</div></td>
         <td>${t.guest ? `<span class="tag">${esc(kindLabel(t.guest))}</span> ${esc(t.guest.name)}
               <div class="sub">${esc(t.guest.node)} · ${esc(t.guest.status)}</div>` : `<span class="sub">—</span>`}</td>
         <td>${t.container ? `🐳 ${esc(t.container.name)}<div class="sub">${esc(t.container.host)} · ${esc(t.container.status)}</div>`
               : `<span class="sub">—</span>`}</td>
-        <td class="s-${st}">${t.reachable == null ? "–" : (t.reachable ? "erreichbar" : "nicht erreichbar")}</td>
+        <td class="s-${st}">${txt}</td>
       </tr>`);
     }
   }
@@ -152,7 +223,7 @@ function renderAudit(q) {
   return `
     <h2>Routen → Ziel <small>(${rows.length})</small></h2>
     <div class="wrap"><table>
-      <tr><th>Domain</th><th>Origin</th><th>Proxmox</th><th>Docker</th><th>Port</th></tr>
+      <tr><th>Domain</th><th>Origin</th><th>Proxmox</th><th>Docker</th><th>Status</th></tr>
       ${rows.join("") || `<tr><td colspan="5" class="sub">Keine Routen.</td></tr>`}
     </table></div>
 
@@ -188,32 +259,98 @@ function render() {
   $("#view").innerHTML = view === "audit" ? renderAudit(q) : renderLinks(q);
 }
 
-function setMsg(d) {
+function apply(d) {
+  D = d;
+  document.title = D.title; $("#title").textContent = D.title;
   const m = [];
-  if (d.error) m.push(`<div class="err">Zoraxy-Fehler: ${esc(d.error)}</div>`);
-  (d.warnings || []).forEach(w => m.push(`<div class="wrn">${esc(w)}</div>`));
-  if (!d.error && !d.links.length) m.push(`<div class="wrn">Noch keine Links geladen…</div>`);
+  if (D.error) m.push(`<div class="err">Zoraxy-Fehler: ${esc(D.error)}</div>`);
+  (D.warnings || []).forEach(w => m.push(`<div class="wrn">${esc(w)}</div>`));
+  if (!D.error && !D.links.length && !D.updated) m.push(`<div class="wrn">Noch keine Daten geladen…</div>`);
   $("#msg").innerHTML = m.join("");
+  $("#upd").textContent = D.updated ? "Stand: " + new Date(D.updated * 1000).toLocaleTimeString("de-DE") : "";
+  render();
 }
 
 async function load(path = "/api/links") {
-  try {
-    D = await (await fetch(path)).json();
-    document.title = D.title; $("#title").textContent = D.title;
-    setMsg(D);
-    $("#upd").textContent = D.updated ? "Stand: " + new Date(D.updated * 1000).toLocaleTimeString("de-DE") : "";
-    render();
-  } catch (e) { $("#msg").innerHTML = `<div class="err">Backend nicht erreichbar.</div>`; }
+  if (document.querySelector("dialog[open]")) return;
+  try { apply(await (await fetch(path)).json()); }
+  catch (e) { $("#msg").innerHTML = `<div class="err">Backend nicht erreichbar.</div>`; }
 }
 
-document.querySelectorAll("nav button").forEach(b => b.onclick = () => { view = b.dataset.v; localStorageSet("view", view); render(); });
+/* Zwischenablage – navigator.clipboard gibt es nur über https/localhost, sonst Fallback */
+async function copyText(text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    try { await navigator.clipboard.writeText(text); return true; } catch {}
+  }
+  const ta = document.createElement("textarea");
+  ta.value = text; ta.setAttribute("readonly", ""); ta.style.cssText = "position:fixed;opacity:0";
+  document.body.appendChild(ta); ta.select();
+  let ok = false; try { ok = document.execCommand("copy"); } catch {}
+  ta.remove(); return ok;
+}
+
+/* Dialog für eigene Einträge */
+const dlg = $("#dlg"), form = $("#form");
+function openDialog(entry) {
+  form.reset();
+  for (const [k, v] of Object.entries(entry || {})) if (form.elements[k]) form.elements[k].value = v ?? "";
+  form.elements.token.value = ls.get("token") || "";
+  $("#tok-wrap").hidden = !D.edit_protected;
+  $("#del").hidden = !entry;
+  $("#dlg-title").textContent = entry ? "Eintrag bearbeiten" : "Eigener Eintrag";
+  $("#dlg-err").textContent = "";
+  $("#groups").innerHTML = [...new Set(allItems().map(l => l.group))].map(g => `<option value="${esc(g)}">`).join("");
+  dlg.showModal();
+  form.elements.name.focus();
+}
+async function send(method, path, body) {
+  const tok = form.elements.token.value;
+  if (tok) ls.set("token", tok);
+  const r = await fetch(path, { method, headers: { "Content-Type": "application/json", "X-Edit-Token": tok },
+                                body: body && JSON.stringify(body) });
+  const d = await r.json();
+  if (!r.ok) throw new Error(d.error || r.statusText);
+  return d;
+}
+form.addEventListener("submit", async e => {
+  const action = e.submitter?.value;
+  if (action === "cancel") return;
+  e.preventDefault();
+  const data = Object.fromEntries(new FormData(form));
+  delete data.token;
+  try {
+    if (action === "delete") {
+      if (!confirm(`„${data.name}“ löschen?`)) return;
+      apply(await send("DELETE", "/api/custom/" + data.id));
+    } else {
+      if (!data.id) delete data.id;
+      apply(await send("POST", "/api/custom", data));
+    }
+    dlg.close();
+  } catch (err) { $("#dlg-err").textContent = err.message; }
+});
+
+/* Events */
+$("#view").addEventListener("click", async e => {
+  const cp = e.target.closest("[data-copy]");
+  if (cp) {
+    const ok = await copyText(cp.dataset.copy);
+    cp.classList.add("ok"); cp.querySelector("span").textContent = ok ? "kopiert ✓" : "nicht möglich";
+    setTimeout(() => { cp.classList.remove("ok"); cp.querySelector("span").textContent = cp.dataset.copy; }, 1200);
+    return;
+  }
+  const ed = e.target.closest("[data-edit]");
+  if (ed) openDialog(D.links.find(l => l.id === ed.dataset.edit)?.raw);
+});
+$("#add").onclick = () => openDialog(null);
+document.querySelectorAll("nav button").forEach(b => b.onclick = () => { view = b.dataset.v; ls.set("view", view); render(); });
 $("#search").addEventListener("input", render);
 $("#search").addEventListener("keydown", e => {
-  if (e.key === "Enter") { const a = document.querySelector("a.card"); if (a) window.open(a.href, "_blank"); }
+  if (e.key === "Enter") { const a = document.querySelector("a.main"); if (a) window.open(a.href, "_blank"); }
   if (e.key === "Escape") { e.target.value = ""; render(); }
 });
 document.addEventListener("keydown", e => {
-  if (e.key === "/" && document.activeElement !== $("#search")) { e.preventDefault(); $("#search").focus(); }
+  if (e.key === "/" && !dlg.open && document.activeElement.tagName !== "INPUT") { e.preventDefault(); $("#search").focus(); }
 });
 $("#reload").onclick = () => load("/api/refresh");
 

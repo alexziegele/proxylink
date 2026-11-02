@@ -8,8 +8,12 @@ services:
     env_file: .env
     volumes:
       - ./config:/config:ro
+      - proxylink-data:/data        # eigene Einträge (custom.json)
       # Lokaler Docker-Host (nur lesend). Für Docker auf anderen Hosts siehe README.
       - /var/run/docker.sock:/var/run/docker.sock:ro
     # Container braucht Lesezugriff auf den Socket (GID der docker-Gruppe auf dem Host):
     group_add:
       - "${DOCKER_GID:-999}"
+
+volumes:
+  proxylink-data:
