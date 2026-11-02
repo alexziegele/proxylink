@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>proxylink</title>
+<style>
+  :root {
+    --bg: #0f1216; --card: #171b21; --card-h: #1e232b; --line: #262c35;
+    --text: #e6e9ee; --muted: #8a93a1; --accent: #5aa9e6;
+    --up: #4cb782; --warn: #e2b340; --down: #e66a5a; --unk: #6b7380;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg: #f4f5f7; --card: #fff; --card-h: #f0f3f7; --line: #e1e4e9;
+            --text: #1a1d22; --muted: #6b7380; --accent: #1f6fb2; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1180px; margin: 0 auto; padding: 36px 20px 60px; }
+  header { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 22px; }
+  h1 { margin: 0; font-size: 26px; font-weight: 650; letter-spacing: -.01em; }
+  #clock { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .spacer { flex: 1; }
+  #search { width: 240px; max-width: 100%; padding: 8px 12px; border-radius: 8px;
+            border: 1px solid var(--line); background: var(--card); color: var(--text); font: inherit; }
+  #search:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  nav { display: flex; gap: 2px; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 3px; }
+  nav button { background: none; border: 0; color: var(--muted); font: inherit; padding: 5px 12px; border-radius: 6px; cursor: pointer; }
+  nav button.on { background: var(--card-h); color: var(--text); }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted);
+       font-weight: 600; margin: 26px 0 10px; }
+  h2 small { text-transform: none; letter-spacing: 0; font-weight: 400; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
+  a.card { position: relative; display: flex; gap: 12px; align-items: center; padding: 12px 14px; border-radius: 10px;
+           background: var(--card); border: 1px solid var(--line); color: inherit; text-decoration: none;
+           transition: background .12s, border-color .12s; min-width: 0; }
+  a.card:hover, a.card:focus-visible { background: var(--card-h); border-color: var(--accent); outline: none; }
+  .ic { flex: none; width: 36px; height: 36px; border-radius: 8px; display: grid; place-items: center;
+        font-weight: 700; font-size: 16px; color: #fff; overflow: hidden; }
+  .ic img { width: 100%; height: 100%; object-fit: contain; }
+  .tx { min-width: 0; flex: 1; }
+  .nm { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dm { color: var(--muted); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dot { position: absolute; top: 9px; right: 9px; width: 8px; height: 8px; border-radius: 50%; background: var(--unk); }
+  .dot.up { background: var(--up); } .dot.warn { background: var(--warn); } .dot.down { background: var(--down); }
+  .off { opacity: .45; }
+  table { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--line);
+          border-radius: 10px; overflow: hidden; font-size: 13.5px; }
+  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; background: var(--card-h); }
+  tr:last-child td { border-bottom: 0; }
+  td .sub { color: var(--muted); font-size: 12px; }
+  .tag { display: inline-block; padding: 1px 7px; border-radius: 5px; font-size: 12px; background: var(--card-h);
+         border: 1px solid var(--line); white-space: nowrap; }
+  .s-up { color: var(--up); } .s-down { color: var(--down); } .s-warn { color: var(--warn); } .s-unknown { color: var(--unk); }
+  .wrap { overflow-x: auto; }
+  td a { color: var(--accent); text-decoration: none; } td a:hover { text-decoration: underline; }
+  .empty { color: var(--muted); font-size: 13.5px; padding: 4px 0; }
+  #msg { margin-top: 18px; font-size: 13.5px; }
+  #msg .err { color: var(--down); } #msg .wrn { color: var(--warn); }
+  footer { margin-top: 40px; color: var(--muted); font-size: 12px; }
+  footer button { background: none; border: none; color: var(--accent); cursor: pointer; font: inherit; padding: 0; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1 id="title">proxylink</h1>
+    <span id="clock"></span>
+    <span class="spacer"></span>
+    <nav><button data-v="links" class="on">Links</button><button data-v="audit">Abgleich</button></nav>
+    <input id="search" type="search" placeholder="Suchen…  ( / )" autocomplete="off">
+  </header>
+  <div id="view"></div>
+  <div id="msg"></div>
+  <footer><span id="upd"></span> · <button id="reload">jetzt neu laden</button></footer>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+let D = { links: [], guests: [], containers: [], sources: {} };
+let view = localStorageGet("view") || "links";
+
+function localStorageGet(k) { try { return localStorage.getItem("proxylink." + k); } catch { return null; } }
+function localStorageSet(k, v) { try { localStorage.setItem("proxylink." + k, v); } catch {} }
+function color(str) { let h = 0; for (const c of str) h = (h * 31 + c.charCodeAt(0)) % 360; return `hsl(${h} 45% 45%)`; }
+function esc(s) { return String(s ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+const kindLabel = g => (g.kind === "lxc" ? "LXC " : "VM ") + g.vmid;
+const stateWord = { up: "online", warn: "teilweise", down: "offline", unknown: "unbekannt" };
+
+function targetText(l) {
+  const parts = [];
+  for (const t of l.targets || []) {
+    const p = [];
+    if (t.guest) p.push(`${kindLabel(t.guest)} ${t.guest.name}`);
+    if (t.container) p.push(`🐳 ${t.container.name}`);
+    if (p.length) parts.push(p.join(" → "));
+  }
+  return parts.join(" · ");
+}
+
+function matches(l, q) {
+  return !q || [l.name, l.domain, l.group, l.description, targetText(l), ...(l.origins || []).map(o => o.addr)]
+    .join(" ").toLowerCase().includes(q);
+}
+
+function renderLinks(q) {
+  const groups = {};
+  D.links.filter(l => matches(l, q)).forEach(l => (groups[l.group] ||= []).push(l));
+  const html = Object.entries(groups).map(([g, ls]) => `
+    <h2>${esc(g)}</h2>
+    <div class="grid">${ls.map(l => {
+      const tgt = targetText(l);
+      return `
+      <a class="card${l.disabled ? " off" : ""}" href="${esc(l.url)}" target="_blank" rel="noopener"
+         title="${esc((l.origins || []).map(o => o.addr).join(", ") + " – " + stateWord[l.state || "unknown"])}">
+        <span class="dot ${l.state || ""}"></span>
+        <span class="ic" style="background:${l.icon ? "transparent" : color(l.domain)}">
+          ${l.icon ? `<img src="${esc(l.icon)}" alt="">` : esc((l.name[0] || "?").toUpperCase())}
+        </span>
+        <span class="tx">
+          <div class="nm">${esc(l.name)}</div>
+          <div class="dm">${esc(l.description || l.domain)}</div>
+          ${tgt ? `<div class="dm">${esc(tgt)}</div>` : ""}
+        </span>
+      </a>`; }).join("")}
+    </div>`).join("");
+  return html || (D.links.length ? `<p class="empty">Keine Treffer.</p>` : "");
+}
+
+function renderAudit(q) {
+  const rows = [];
+  for (const l of D.links.filter(l => matches(l, q))) {
+    for (const t of (l.targets || [{ addr: "—" }])) {
+      const st = t.reachable === false ? "down" : t.reachable ? "up" : "unknown";
+      rows.push(`<tr>
+        <td><a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.domain)}</a></td>
+        <td>${esc(t.addr)}<div class="sub">${t.ip ? esc(t.ip + ":" + t.port) : (t.container ? "Docker-Netzwerk" : t.host ? "DNS nicht auflösbar" : "")}</div></td>
+        <td>${t.guest ? `<span class="tag">${esc(kindLabel(t.guest))}</span> ${esc(t.guest.name)}
+              <div class="sub">${esc(t.guest.node)} · ${esc(t.guest.status)}</div>` : `<span class="sub">—</span>`}</td>
+        <td>${t.container ? `🐳 ${esc(t.container.name)}<div class="sub">${esc(t.container.host)} · ${esc(t.container.status)}</div>`
+              : `<span class="sub">—</span>`}</td>
+        <td class="s-${st}">${t.reachable == null ? "–" : (t.reachable ? "erreichbar" : "nicht erreichbar")}</td>
+      </tr>`);
+    }
+  }
+  const unmatched = D.links.filter(l => !l.matched && matches(l, q));
+  const qf = x => !q || JSON.stringify(x).toLowerCase().includes(q);
+  const freeGuests = D.guests.filter(g => !g.routed && qf(g));
+  const freeConts = D.containers.filter(c => !c.routed && c.ports.length && qf(c));
+
+  return `
+    <h2>Routen → Ziel <small>(${rows.length})</small></h2>
+    <div class="wrap"><table>
+      <tr><th>Domain</th><th>Origin</th><th>Proxmox</th><th>Docker</th><th>Port</th></tr>
+      ${rows.join("") || `<tr><td colspan="5" class="sub">Keine Routen.</td></tr>`}
+    </table></div>
+
+    <h2>Routen ohne bekanntes Ziel <small>(${unmatched.length})</small></h2>
+    ${unmatched.length ? `<div class="wrap"><table>
+      <tr><th>Domain</th><th>Origin</th></tr>
+      ${unmatched.map(l => `<tr><td>${esc(l.domain)}</td><td>${esc(l.origins.map(o => o.addr).join(", "))}</td></tr>`).join("")}
+    </table></div>` : `<p class="empty">Alle Routen sind einem Gast oder Container zugeordnet.</p>`}
+
+    ${D.sources.proxmox ? `
+    <h2>Proxmox-Gäste ohne Route <small>(${freeGuests.length})</small></h2>
+    ${freeGuests.length ? `<div class="wrap"><table>
+      <tr><th>ID</th><th>Name</th><th>Node</th><th>Status</th><th>IPs</th></tr>
+      ${freeGuests.map(g => `<tr><td><span class="tag">${esc(kindLabel(g))}</span></td><td>${esc(g.name)}</td>
+        <td>${esc(g.node)}</td><td class="s-${g.status === "running" ? "up" : "unknown"}">${esc(g.status)}</td>
+        <td>${esc(g.ips.join(", ") || "—")}</td></tr>`).join("")}
+    </table></div>` : `<p class="empty">Keine.</p>`}` : ""}
+
+    ${(D.sources.docker || []).length ? `
+    <h2>Container mit offenen Ports ohne Route <small>(${freeConts.length})</small></h2>
+    ${freeConts.length ? `<div class="wrap"><table>
+      <tr><th>Host</th><th>Container</th><th>Image</th><th>Status</th><th>Ports</th></tr>
+      ${freeConts.map(c => `<tr><td>${esc(c.host)}</td><td>${esc(c.name)}${c.compose ? `<div class="sub">${esc(c.compose)}</div>` : ""}</td>
+        <td class="sub">${esc(c.image)}</td><td class="s-${c.state === "running" ? "up" : "down"}">${esc(c.status)}</td>
+        <td>${esc(c.ports.join(", "))}</td></tr>`).join("")}
+    </table></div>` : `<p class="empty">Keine.</p>`}` : ""}
+  `;
+}
+
+function render() {
+  const q = $("#search").value.trim().toLowerCase();
+  document.querySelectorAll("nav button").forEach(b => b.classList.toggle("on", b.dataset.v === view));
+  $("#view").innerHTML = view === "audit" ? renderAudit(q) : renderLinks(q);
+}
+
+function setMsg(d) {
+  const m = [];
+  if (d.error) m.push(`<div class="err">Zoraxy-Fehler: ${esc(d.error)}</div>`);
+  (d.warnings || []).forEach(w => m.push(`<div class="wrn">${esc(w)}</div>`));
+  if (!d.error && !d.links.length) m.push(`<div class="wrn">Noch keine Links geladen…</div>`);
+  $("#msg").innerHTML = m.join("");
+}
+
+async function load(path = "/api/links") {
+  try {
+    D = await (await fetch(path)).json();
+    document.title = D.title; $("#title").textContent = D.title;
+    setMsg(D);
+    $("#upd").textContent = D.updated ? "Stand: " + new Date(D.updated * 1000).toLocaleTimeString("de-DE") : "";
+    render();
+  } catch (e) { $("#msg").innerHTML = `<div class="err">Backend nicht erreichbar.</div>`; }
+}
+
+document.querySelectorAll("nav button").forEach(b => b.onclick = () => { view = b.dataset.v; localStorageSet("view", view); render(); });
+$("#search").addEventListener("input", render);
+$("#search").addEventListener("keydown", e => {
+  if (e.key === "Enter") { const a = document.querySelector("a.card"); if (a) window.open(a.href, "_blank"); }
+  if (e.key === "Escape") { e.target.value = ""; render(); }
+});
+document.addEventListener("keydown", e => {
+  if (e.key === "/" && document.activeElement !== $("#search")) { e.preventDefault(); $("#search").focus(); }
+});
+$("#reload").onclick = () => load("/api/refresh");
+
+const tick = () => $("#clock").textContent = new Date().toLocaleString("de-DE", { weekday: "long", day: "2-digit", month: "long", hour: "2-digit", minute: "2-digit" });
+tick(); setInterval(tick, 10000);
+load(); setInterval(load, 30000);
+</script>
+</body>
+</html>

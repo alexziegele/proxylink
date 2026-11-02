@@ -1,0 +1,9 @@
+{
+  "pve.example.de": {
+    "name": "Proxmox",
+    "group": "Infrastruktur",
+    "description": "Hypervisor",
+    "icon": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/proxmox.svg"
+  },
+  "test.example.de": { "hide": true }
+}
