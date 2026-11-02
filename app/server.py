@@ -18,8 +18,8 @@ import urllib.parse
 import urllib.request
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
-from sources import Proxmox, parse_docker_hosts
-from monitor import Monitor, telegram
+from sources import parse_docker_hosts, parse_proxmox
+from monitor import Monitor, telegram, save_settings, public_settings, load_settings
 
 log = logging.getLogger("proxylink")
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(message)s")
@@ -35,9 +35,6 @@ SHOW_DISABLED = os.getenv("SHOW_DISABLED", "true").lower() in ("1", "true", "yes
 EXCLUDE = [p.strip().lower() for p in os.getenv("EXCLUDE", "").split(",") if p.strip()]
 OVERRIDES_FILE = os.getenv("OVERRIDES_FILE", "/config/overrides.json")
 PORT = int(os.getenv("PORT", "8080"))
-PVE_URL = os.getenv("PVE_URL", "")                       # z. B. https://192.168.10.2:8006
-PVE_TOKEN = os.getenv("PVE_TOKEN", "")                   # home@pve!dash=xxxxxxxx-...
-PVE_INSECURE = os.getenv("PVE_INSECURE", "true").lower() in ("1", "true", "yes")
 DOCKER_HOSTS = os.getenv("DOCKER_HOSTS", "")             # name=url[@ip];name2=url2
 CHECK_ORIGINS = os.getenv("CHECK_ORIGINS", "true").lower() in ("1", "true", "yes")
 DATA_DIR = os.getenv("DATA_DIR", "/data")                # eigene Einträge (custom.json)
@@ -324,7 +321,7 @@ def trace(links, guests, containers):
             guest["routed"] = True
         return {
             **o, "host": host, "ip": ip, "port": port, "reachable": reachable,
-            "guest": guest and {k: guest[k] for k in ("kind", "vmid", "name", "node", "status")},
+            "guest": guest and {k: guest[k] for k in ("cluster", "kind", "vmid", "name", "node", "status")},
             "container": cont and {k: cont[k] for k in ("host", "name", "state", "status", "image")},
         }
 
@@ -374,7 +371,7 @@ def discover(links, guests, containers):
             "url": o.get("url") or f"{'https' if p in HTTPS_PORTS else 'http'}://{ip}:{p}",
             "group": o.get("group") or "Ohne Proxy", "icon": o.get("icon", ""),
             "description": o.get("description") or desc, "addrs": addrs, "origins": [],
-            "targets": [{"guest": guest and {k: guest[k] for k in ("kind", "vmid", "name", "node", "status")},
+            "targets": [{"guest": guest and {k: guest[k] for k in ("cluster", "kind", "vmid", "name", "node", "status")},
                          "container": cont and {k: cont[k] for k in ("host", "name", "state", "status", "image")}}],
             "state": "up", "matched": True, "disabled": False,
         })
@@ -403,7 +400,7 @@ def discover(links, guests, containers):
 class Cache:
     def __init__(self):
         self.client = ZoraxyClient()
-        self.pve = Proxmox(PVE_URL, PVE_TOKEN, PVE_INSECURE) if PVE_URL and PVE_TOKEN else None
+        self.pves = parse_proxmox(os.environ)
         self.dockers = parse_docker_hosts(DOCKER_HOSTS)
         self.links, self.services, self.guests, self.containers = [], [], [], []
         self.refresh_lock = threading.Lock()
@@ -415,14 +412,14 @@ class Cache:
         warnings, guests, containers = [], [], []
         jobs = {}
         with ThreadPoolExecutor(8) as ex:
-            if self.pve:
-                jobs[ex.submit(self.pve.guests)] = "Proxmox"
+            for p in self.pves:
+                jobs[ex.submit(p.guests)] = "Proxmox " + p.name
             for d in self.dockers:
                 jobs[ex.submit(d.containers)] = "Docker " + d.name
             for fut, name in jobs.items():
                 try:
                     res = fut.result()
-                    (guests if name == "Proxmox" else containers).extend(res)
+                    (guests if name.startswith("Proxmox ") else containers).extend(res)
                 except Exception as e:
                     log.warning("%s nicht abrufbar: %s", name, e)
                     warnings.append(f"{name}: {e}")
@@ -462,11 +459,11 @@ class Cache:
             return {"title": TITLE, "links": self.links, "error": self.error, "updated": self.updated,
                     "warnings": self.warnings, "services": self.services,
                     "edit_protected": bool(EDIT_TOKEN), "zoraxy_url": ZORAXY_URL, "guests": self.guests, "containers": self.containers,
-                    "sources": {"proxmox": bool(self.pve), "docker": [d.name for d in self.dockers]}}
+                    "sources": {"proxmox": [p.name for p in self.pves], "docker": [d.name for d in self.dockers]}}
 
 
 CACHE = Cache()
-MONITOR = Monitor(CACHE.pve)
+MONITOR = Monitor(CACHE.pves)
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -490,9 +487,8 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json(CACHE.snapshot())
         if self.path == "/api/status":
             return self._json(MONITOR.snapshot())
-        if self.path == "/api/telegram-test":
-            ok = telegram(f"👋 <b>{TITLE}</b>: Telegram-Test erfolgreich")
-            return self._json({"ok": ok}, 200 if ok else 500)
+        if self.path == "/api/settings":
+            return self._json(public_settings())
         if self.path == "/api/refresh":
             CACHE.refresh()
             return self._json(CACHE.snapshot())
@@ -507,6 +503,21 @@ class Handler(SimpleHTTPRequestHandler):
         return True
 
     def do_POST(self):
+        if self.path in ("/api/settings", "/api/telegram-test"):
+            if not self._authorized():
+                return
+            try:
+                n = min(int(self.headers.get("Content-Length", 0)), 20000)
+                data = json.loads(self.rfile.read(n) or b"{}")
+                if self.path == "/api/settings":
+                    st = save_settings(data)
+                    MONITOR.poll()
+                    return self._json(public_settings(st))
+                ok, err = telegram(f"👋 <b>{TITLE}</b>: Telegram-Test erfolgreich – Alarme kommen hier an.",
+                                   load_settings(), force=True)
+                return self._json({"ok": ok, "error": err}, 200 if ok else 502)
+            except (ValueError, json.JSONDecodeError) as e:
+                return self._json({"error": str(e)}, 400)
         handlers = {"/api/custom": upsert_custom, "/api/override": save_override}
         if self.path not in handlers:
             return self._json({"error": "not found"}, 404)

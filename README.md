@@ -11,8 +11,9 @@ Jede Route wird bis zum Ziel verfolgt und mit **Proxmox** (LXC + VMs) und **Dock
 - **Ohne Proxy**: laufende Dienste ohne Zoraxy-Route (Container mit veröffentlichten Ports, offene Ports auf Proxmox-Gästen) erscheinen als gestrichelte Kacheln
 - In Zoraxy deaktivierte Proxies werden ausgegraut und mit Aus-Schalter markiert
 - Unter jeder Kachel `ip:port` zum Kopieren
+- **Mehrere Proxmox-Cluster** (`PVE_URL_2` …), Status gruppiert je Cluster
 - **Proxmox-Status** oben: alle Nodes mit CPU, RAM, Root-Disk + ausgewählte Storages (z. B. `/mnt/share`)
-- **Telegram-Alarme**, wenn CPU/RAM (optional Disk) eine Grenze für eine Weile überschreiten, plus Entwarnung und Node-offline-Meldung
+- **Telegram-Alarme** (im Panel unter 🔔 einstellbar), wenn CPU/RAM (optional Disk) eine Grenze für eine Weile überschreiten, plus Entwarnung und Node-offline-Meldung
 - **Jede Kachel anpassbar** (✎): Name, Icon, Gruppe, Beschreibung, URL, ausblenden. Icons per Name aus [dashboardicons.com](https://dashboardicons.com) oder URL, ohne Angabe wird automatisch nach Name/Subdomain gesucht
 - **Eigene Einträge** über „+ Eintrag“ (bearbeiten per ✎ auf der Kachel), gespeichert im Volume `/data/custom.json`
 - Suche mit `/`, `Enter` öffnet den ersten Treffer
@@ -35,7 +36,8 @@ Dann `http://<host>:8080` öffnen.
 | `ZORAXY_URL` | Admin-UI von Zoraxy, z. B. `http://192.168.10.5:8000` |
 | `ZORAXY_USER` / `ZORAXY_PASS` | Login der Zoraxy-Web-UI (leer lassen bei `-noauth`) |
 | `ZORAXY_INSECURE` | `true` bei https mit selbstsigniertem Zertifikat |
-| `PVE_URL` / `PVE_TOKEN` | Proxmox-API, Token im Format `user@realm!tokenid=secret` |
+| `PVE_URL` / `PVE_TOKEN` / `PVE_NAME` | Proxmox-API, Token im Format `user@realm!tokenid=secret`, Name zur Anzeige |
+| `PVE_URL_2` … `_9` | weitere eigenständige Cluster, jeweils mit `PVE_TOKEN_n`, `PVE_NAME_n`, optional `PVE_INSECURE_n` |
 | `PVE_INSECURE` | Zertifikat nicht prüfen (Standard `true`) |
 | `DOCKER_HOSTS` | `name=url[@host-ip]`, mehrere mit `;` |
 | `LINK_SCHEME` | `https` oder `http` für die erzeugten Links |
@@ -45,11 +47,7 @@ Dann `http://<host>:8080` öffnen.
 | `PROBE_PORTS` | Ports, die auf Proxmox-Gästen ohne Route geprüft werden |
 | `PVE_STORAGES` | Storages für die Statusleiste (ID oder Pfad), Standard `/mnt/share` |
 | `LOCAL_DISKS` | zusätzlich in den Container gemountete Pfade `name=/pfad` |
-| `TELEGRAM_TOKEN` / `TELEGRAM_CHAT_ID` | Bot-Token und Chat für Alarme |
-| `ALERT_CPU` / `ALERT_RAM` / `ALERT_DISK` | Grenzen in %, `0` = aus (Standard 90 / 90 / 90) |
-| `ALERT_MINUTES` | Dauer über der Grenze, bevor gemeldet wird (Standard 2) |
-| `ALERT_HYSTERESIS` | Entwarnung erst X % unter der Grenze (Standard 5) |
-| `ALERT_REPEAT_MINUTES` | Erinnerung, solange es anhält (Standard 0 = nie) |
+| `TELEGRAM_TOKEN`, `ALERT_*` | nur Startwerte, eingestellt wird im Panel (🔔 Alarme) |
 | `EDIT_TOKEN` | optional: Token, ohne den keine eigenen Einträge angelegt/gelöscht werden können |
 | `EXCLUDE` | Domains mit diesen Teilstrings ausblenden, kommagetrennt |
 | `REFRESH_SECONDS` | Abrufintervall (Standard 60) |
@@ -107,15 +105,23 @@ Die Statusleiste liest Storages über die Proxmox-API. `/mnt/share` erscheint, w
 Ist es dort nicht eingetragen, kannst du den Pfad in den proxylink-Container mounten (`- /mnt/share:/mnt/share:ro`)
 und `LOCAL_DISKS=share=/mnt/share` setzen.
 
-## Telegram
+## Telegram-Alarme
+
+Alles im Panel unter **🔔 Alarme**: Bot-Token, Chat-ID, Grenzen für CPU/RAM/Disk, Dauer, Entwarnung, Erinnerung,
+Node-offline-Meldung. **Test senden** speichert und schickt eine Testnachricht. Gespeichert wird in `/data/settings.json`.
 
 1. Bei [@BotFather](https://t.me/BotFather) einen Bot anlegen → Token
-2. Dem Bot einmal schreiben, Chat-ID z. B. über [@userinfobot](https://t.me/userinfobot) herausfinden
-3. `TELEGRAM_TOKEN` + `TELEGRAM_CHAT_ID` in `.env`, neu starten
-4. Test: `http://<host>:8080/api/telegram-test`
+2. Dem Bot einmal schreiben, Chat-ID z. B. über [@userinfobot](https://t.me/userinfobot)
+3. Beides im Panel eintragen → „Test senden“
 
-Ein Alarm kommt einmal, wenn der Wert `ALERT_MINUTES` lang über der Grenze liegt, und eine Entwarnung, sobald er
-`ALERT_HYSTERESIS` Prozentpunkte darunter fällt. Kurze Spitzen lösen nichts aus.
+Ein Alarm kommt einmal, wenn der Wert die eingestellte Dauer über der Grenze liegt, und eine Entwarnung, sobald er
+um die Entwarnungs-Spanne darunter fällt. Kurze Spitzen lösen nichts aus. Die Zahl am 🔔-Knopf zeigt aktive Alarme.
+Mit `EDIT_TOKEN` ist auch dieser Dialog geschützt.
+
+### Mehrere Proxmox-Cluster
+
+Für jeden eigenständigen Cluster einen eigenen Token anlegen (gleiche Befehle) und als `PVE_URL_2`, `PVE_TOKEN_2`,
+`PVE_NAME_2` eintragen. Gäste aller Cluster werden beim Routen-Abgleich berücksichtigt, die Statusleiste gruppiert je Cluster.
 
 ## Dienste ohne Proxy
 
@@ -133,5 +139,6 @@ Hinweis: Kopieren in die Zwischenablage funktioniert auch über `http://`, im Br
 - `DELETE /api/custom/<id>`
 - `POST /api/override` – Anpassung einer Kachel (JSON: `key` + `name`, `icon`, `group`, `description`, `url`, `hide`; nur `key` = zurücksetzen)
 - `GET /api/status` – Proxmox-Nodes und Storages
-- `GET /api/telegram-test`
+- `GET /api/settings`, `POST /api/settings` – Alarm-Einstellungen
+- `POST /api/telegram-test`
 - `GET /health`

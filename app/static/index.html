@@ -43,7 +43,8 @@
   input, select { font: inherit; color: var(--text); background: var(--card); border: 1px solid var(--line);
                   border-radius: 8px; padding: 8px 12px; }
   input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
-  #search { width: 220px; max-width: 100%; }
+  #search { width: 170px; max-width: 100%; }
+  @media (max-width: 1240px) { #clock { display: none; } }
   nav { display: flex; gap: 2px; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 3px; }
   nav button { background: none; border: 0; color: var(--muted); font: inherit; padding: 5px 12px; border-radius: 6px; cursor: pointer; }
   nav button.on { background: var(--card-h); color: var(--text); }
@@ -122,6 +123,14 @@
   dialog .icrow img { width: 34px; height: 34px; object-fit: contain; flex: none; border-radius: 6px; background: var(--chip); }
   dialog .chk { display: flex; gap: 8px; align-items: center; margin-top: 12px; color: var(--text); font-size: 14px; }
   dialog .chk input { width: auto; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+  .unit { position: relative; } .unit input { padding-right: 44px; }
+  .unit span { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 13px; pointer-events: none; }
+  dialog .sec { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; margin: 18px 0 2px; }
+  dialog .ok { color: var(--up); font-size: 13px; min-height: 1em; margin-top: 10px; }
+  .active-alerts { background: color-mix(in srgb, var(--down) 12%, transparent); color: var(--down); border-radius: 8px;
+                   padding: 8px 12px; font-size: 13px; margin-bottom: 4px; }
+  #alerts-badge:not(:empty) { margin-left: 6px; background: var(--down); color: #fff; border-radius: 9px; padding: 0 6px; font-size: 12px; }
   dialog .err { color: var(--down); font-size: 13px; min-height: 1em; margin-top: 10px; }
 </style>
 </head>
@@ -133,6 +142,7 @@
     <span class="spacer"></span>
     <nav><button data-v="links" class="on">Links</button><button data-v="audit">Abgleich</button></nav>
     <a class="btn" id="zoraxy" target="_blank" rel="noopener" hidden>Zoraxy ↗</a>
+    <button class="btn" id="alerts-btn" title="Alarme &amp; Telegram">🔔 Alarme<span id="alerts-badge"></span></button>
     <button class="btn" id="add">+ Eintrag</button>
     <input id="search" type="search" placeholder="Suchen…  ( / )" autocomplete="off">
   </header>
@@ -169,6 +179,37 @@
   </form>
 </dialog>
 
+<dialog id="adlg">
+  <form id="aform" method="dialog">
+    <h3>Alarme</h3>
+    <div id="a-active"></div>
+    <div class="sec">Telegram</div>
+    <label class="chk"><input type="checkbox" name="telegram_enabled"> Benachrichtigungen per Telegram senden</label>
+    <label>Bot-Token</label><input name="telegram_token" type="password" autocomplete="off" placeholder="123456:ABC… von @BotFather">
+    <div class="hint" id="tok-hint"></div>
+    <label>Chat-ID</label><input name="telegram_chat_id" placeholder="z. B. 123456789 oder -100…">
+    <div class="sec">Grenzwerte</div>
+    <div class="grid2">
+      <div><label>CPU</label><div class="unit"><input name="cpu" type="number" min="0" max="100" step="1"><span>%</span></div></div>
+      <div><label>RAM</label><div class="unit"><input name="ram" type="number" min="0" max="100" step="1"><span>%</span></div></div>
+      <div><label>Disk / Storage</label><div class="unit"><input name="disk" type="number" min="0" max="100" step="1"><span>%</span></div></div>
+      <div><label>Dauer über Grenze</label><div class="unit"><input name="minutes" type="number" min="0" max="1440" step="0.5"><span>min</span></div></div>
+      <div><label>Entwarnung ab</label><div class="unit"><input name="hysteresis" type="number" min="0" max="50" step="1"><span>% drunter</span></div></div>
+      <div><label>Erinnerung alle</label><div class="unit"><input name="repeat" type="number" min="0" max="10080" step="5"><span>min</span></div></div>
+    </div>
+    <div class="hint">0 = aus. Erinnerung 0 = nur einmal melden.</div>
+    <label class="chk"><input type="checkbox" name="node_down"> Melden, wenn ein Proxmox-Node offline geht</label>
+    <div id="atok-wrap" hidden><label>Bearbeitungs-Token</label><input name="token" type="password"></div>
+    <div class="err" id="a-err"></div><div class="ok" id="a-ok"></div>
+    <div class="row">
+      <button class="btn primary" value="save">Speichern</button>
+      <button class="btn" value="test" formnovalidate>Test senden</button>
+      <span class="spacer"></span>
+      <button class="btn" value="cancel" formnovalidate>Schließen</button>
+    </div>
+  </form>
+</dialog>
+
 <script>
 const $ = s => document.querySelector(s);
 let D = { links: [], services: [], guests: [], containers: [], sources: {} };
@@ -199,6 +240,7 @@ function iconFail(img) {
 
 function color(str) { let h = 0; for (const c of str) h = (h * 31 + c.charCodeAt(0)) % 360; return `hsl(${h} 45% 45%)`; }
 function esc(s) { return String(s ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+const multiPve = () => (D.sources?.proxmox || []).length > 1;
 const kindLabel = g => (g.kind === "lxc" ? "LXC " : "VM ") + g.vmid;
 const stateWord = { up: "online", warn: "teilweise erreichbar", down: "offline", unknown: "Status unbekannt" };
 const COPY_ICON = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="5" y="5" width="9" height="9" rx="1.5"/><path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2h-6A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5"/></svg>`;
@@ -260,7 +302,7 @@ function renderAudit(q) {
         <td><a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.domain)}</a>${l.custom ? ` <span class="tag">eigen</span>` : ""}</td>
         <td>${esc(t.addr)}<div class="sub">${t.ip ? esc(t.ip + ":" + t.port) : (t.container ? "Docker-Netzwerk" : t.host ? "DNS nicht auflösbar" : "")}</div></td>
         <td>${t.guest ? `<span class="tag">${esc(kindLabel(t.guest))}</span> ${esc(t.guest.name)}
-              <div class="sub">${esc(t.guest.node)} · ${esc(t.guest.status)}</div>` : `<span class="sub">—</span>`}</td>
+              <div class="sub">${multiPve() ? esc(t.guest.cluster) + " / " : ""}${esc(t.guest.node)} · ${esc(t.guest.status)}</div>` : `<span class="sub">—</span>`}</td>
         <td>${t.container ? `🐳 ${esc(t.container.name)}<div class="sub">${esc(t.container.host)} · ${esc(t.container.status)}</div>`
               : `<span class="sub">—</span>`}</td>
         <td class="s-${st}">${txt}</td>
@@ -285,12 +327,12 @@ function renderAudit(q) {
       ${unmatched.map(l => `<tr><td>${esc(l.domain)}</td><td>${esc(l.origins.map(o => o.addr).join(", "))}</td></tr>`).join("")}
     </table></div>` : `<p class="empty">Alle Routen sind einem Gast oder Container zugeordnet.</p>`}
 
-    ${D.sources.proxmox ? `
+    ${(D.sources.proxmox || []).length ? `
     <h2>Proxmox-Gäste ohne Route <small>(${freeGuests.length})</small></h2>
     ${freeGuests.length ? `<div class="wrap"><table>
-      <tr><th>ID</th><th>Name</th><th>Node</th><th>Status</th><th>IPs</th></tr>
+      <tr><th>ID</th><th>Name</th><th>Cluster / Node</th><th>Status</th><th>IPs</th></tr>
       ${freeGuests.map(g => `<tr><td><span class="tag">${esc(kindLabel(g))}</span></td><td>${esc(g.name)}</td>
-        <td>${esc(g.node)}</td><td class="s-${g.status === "running" ? "up" : "unknown"}">${esc(g.status)}</td>
+        <td>${multiPve() ? esc(g.cluster) + " / " : ""}${esc(g.node)}</td><td class="s-${g.status === "running" ? "up" : "unknown"}">${esc(g.status)}</td>
         <td>${esc(g.ips.join(", ") || "—")}</td></tr>`).join("")}
     </table></div>` : `<p class="empty">Keine.</p>`}` : ""}
 
@@ -313,9 +355,10 @@ function bar(label, p, txt, limit) {
 }
 function renderStatus() {
   const el = $("#status");
-  if (!S || (!S.nodes.length && !S.storages.length)) { el.innerHTML = ""; return; }
+  if (!S || (!S.nodes.length && !S.storages.length && !S.error)) { el.innerHTML = ""; return; }
   const t = S.thresholds || {};
-  const nodes = S.nodes.map(n => `
+  const clusters = [...new Set([...S.nodes, ...S.storages].map(x => x.cluster))];
+  const nodeCard = n => `
     <div class="node">
       <div class="hd"><span class="dot ${n.status === "online" ? "up" : "down"}"></span>${esc(n.name)}
         <small>${n.status === "online" ? `${n.maxcpu} CPU · up ${Math.floor(n.uptime / 86400)} d` : esc(n.status)}</small></div>
@@ -323,18 +366,25 @@ function renderStatus() {
       ${bar("CPU", n.cpu, `${n.cpu.toFixed(0)} %`, t.cpu)}
       ${bar("RAM", n.mem_pct, `${n.mem_pct.toFixed(0)} % <small>${fmtB(n.mem)} / ${fmtB(n.maxmem)}</small>`, t.ram)}
       ${bar("Disk", n.disk_pct, `${n.disk_pct.toFixed(0)} % <small>${fmtB(n.disk)} / ${fmtB(n.maxdisk)}</small>`, t.disk)}` : ""}
-    </div>`);
-  const st = S.storages.map(s => `
+    </div>`;
+  const storCard = s => `
     <div class="node">
       <div class="hd"><span class="dot ${s.status === "available" ? "up" : "down"}"></span>${esc(s.path || s.id)}
         <small>${esc(s.shared ? "shared" : s.node)}${s.path && s.id !== s.path ? " · " + esc(s.id) : ""}</small></div>
       ${bar("Belegt", s.pct, `${s.pct.toFixed(0)} % <small>${fmtB(s.disk)} / ${fmtB(s.maxdisk)}</small>`, t.disk)}
       <div class="bar"><div class="row"><span>Frei</span><span class="v">${fmtB(s.maxdisk - s.disk)}</span></div></div>
-    </div>`);
-  el.innerHTML = [...nodes, ...st].join("");
+    </div>`;
+  const err = S.error ? `<div class="wrn" style="grid-column:1/-1;color:var(--warn);font-size:13px">Proxmox: ${esc(S.error)}</div>` : "";
+  if (clusters.length <= 1) {
+    el.innerHTML = err + [...S.nodes.map(nodeCard), ...S.storages.map(storCard)].join("");
+  } else {
+    el.innerHTML = err + clusters.map(c => `<h2 style="grid-column:1/-1;margin:6px 0 0">Cluster ${esc(c)}</h2>` +
+      [...S.nodes.filter(n => n.cluster === c).map(nodeCard), ...S.storages.filter(s => s.cluster === c).map(storCard)].join("")).join("");
+  }
 }
 async function loadStatus() {
   try { S = await (await fetch("/api/status")).json(); renderStatus(); } catch {}
+  $("#alerts-badge").textContent = S && S.active && S.active.length ? S.active.length : "";
 }
 
 function render() {
@@ -361,7 +411,7 @@ function apply(d) {
 }
 
 async function load(path = "/api/links") {
-  if (document.querySelector("dialog[open]")) return;
+  if (document.querySelector("dialog[open]")) return;  // gilt für beide Dialoge
   try { apply(await (await fetch(path)).json()); }
   catch (e) { $("#msg").innerHTML = `<div class="err">Backend nicht erreichbar.</div>`; }
 }
@@ -440,6 +490,54 @@ form.addEventListener("submit", async e => {
   } catch (err) { $("#dlg-err").textContent = err.message; }
 });
 
+/* Alarm-Einstellungen */
+const adlg = $("#adlg"), aform = $("#aform");
+const ALERT_LABEL = { cpu: "CPU", ram: "RAM", disk: "Disk", down: "offline" };
+const alertText = k => k.startsWith("storage:") ? `Speicher ${k.slice(8)}` : `${k.split(":")[0]} ${ALERT_LABEL[k.split(":")[1]] || k}`;
+async function openAlerts() {
+  $("#a-err").textContent = ""; $("#a-ok").textContent = "";
+  let st;
+  try { st = await (await fetch("/api/settings")).json(); } catch { return; }
+  aform.reset();
+  for (const [k, v] of Object.entries(st)) {
+    const el = aform.elements[k]; if (!el) continue;
+    if (el.type === "checkbox") el.checked = !!v; else if (k !== "telegram_token") el.value = v;
+  }
+  $("#tok-hint").textContent = st.token_set ? `Token gespeichert (${st.token_hint || "••••"}). Leer lassen = behalten, „-“ = löschen.` : "Noch kein Token gespeichert.";
+  aform.elements.token.value = ls.get("token") || "";
+  $("#atok-wrap").hidden = !D.edit_protected;
+  const act = (S && S.active) || [];
+  $("#a-active").innerHTML = act.length ? `<div class="active-alerts">Aktiv: ${act.map(alertText).map(esc).join(", ")}</div>` : "";
+  adlg.showModal();
+}
+aform.addEventListener("submit", async e => {
+  const action = e.submitter?.value;
+  if (action === "cancel") return;
+  e.preventDefault();
+  $("#a-err").textContent = ""; $("#a-ok").textContent = "";
+  const f = aform.elements;
+  const data = { telegram_enabled: f.telegram_enabled.checked, node_down: f.node_down.checked,
+                 telegram_token: f.telegram_token.value, telegram_chat_id: f.telegram_chat_id.value };
+  for (const k of ["cpu", "ram", "disk", "minutes", "hysteresis", "repeat"]) data[k] = f[k].value;
+  const tok = f.token.value; if (tok) ls.set("token", tok);
+  const post = (p, b) => fetch(p, { method: "POST", headers: { "Content-Type": "application/json", "X-Edit-Token": tok }, body: JSON.stringify(b) });
+  try {
+    let r = await post("/api/settings", data), d = await r.json();
+    if (!r.ok) throw new Error(d.error || r.statusText);
+    f.telegram_token.value = "";
+    $("#tok-hint").textContent = d.token_set ? `Token gespeichert (${d.token_hint || "••••"}). Leer lassen = behalten, „-“ = löschen.` : "Noch kein Token gespeichert.";
+    if (action === "test") {
+      r = await post("/api/telegram-test", {}); d = await r.json();
+      if (!r.ok) throw new Error("Telegram: " + (d.error || r.statusText));
+      $("#a-ok").textContent = "Gespeichert, Testnachricht verschickt ✓";
+    } else {
+      $("#a-ok").textContent = "Gespeichert ✓";
+    }
+    loadStatus();
+  } catch (err) { $("#a-err").textContent = err.message; }
+});
+$("#alerts-btn").onclick = openAlerts;
+
 /* Events */
 $("#view").addEventListener("click", async e => {
   const cp = e.target.closest("[data-copy]");
@@ -478,7 +576,7 @@ $("#search").addEventListener("keydown", e => {
   if (e.key === "Escape") { e.target.value = ""; render(); }
 });
 document.addEventListener("keydown", e => {
-  if (e.key === "/" && !dlg.open && document.activeElement.tagName !== "INPUT") { e.preventDefault(); $("#search").focus(); }
+  if (e.key === "/" && !dlg.open && !adlg.open && document.activeElement.tagName !== "INPUT") { e.preventDefault(); $("#search").focus(); }
 });
 $("#reload").onclick = () => load("/api/refresh");
 

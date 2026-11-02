@@ -35,7 +35,8 @@ class Proxmox:
     QEMU-Guest-Agent (zusätzlich VM.GuestAgent.Audit bzw. bei PVE 8 VM.Monitor).
     """
 
-    def __init__(self, url, token, insecure=False):
+    def __init__(self, url, token, insecure=False, name="pve"):
+        self.name = name
         self.url = url.rstrip("/")
         self.token = token
         self.ctx = _ctx(insecure)
@@ -91,7 +92,7 @@ class Proxmox:
         """Nodes (CPU/RAM/Root-Disk) + ausgewählte Storages (per ID oder Pfad, z. B. /mnt/share)."""
         res = self._get("/cluster/resources")
         nodes = [{
-            "name": r["node"], "status": r.get("status", "unknown"),
+            "cluster": self.name, "name": r["node"], "status": r.get("status", "unknown"),
             "cpu": round(r.get("cpu", 0) * 100, 1), "maxcpu": r.get("maxcpu", 0),
             "mem": r.get("mem", 0), "maxmem": r.get("maxmem", 0),
             "disk": r.get("disk", 0), "maxdisk": r.get("maxdisk", 0),
@@ -116,7 +117,7 @@ class Proxmox:
                     continue
                 seen.add(sid)
                 storages.append({
-                    "id": sid, "path": paths.get(sid, ""), "node": r.get("node"),
+                    "cluster": self.name, "id": sid, "path": paths.get(sid, ""), "node": r.get("node"),
                     "shared": bool(r.get("shared")), "status": r.get("status", ""),
                     "disk": r.get("disk", 0), "maxdisk": r.get("maxdisk", 0),
                 })
@@ -129,6 +130,7 @@ class Proxmox:
             ips = self._ips_lxc(g) if g["type"] == "lxc" else self._ips_qemu(g)
             ips = {ip for ip in ips if ip and ip not in ("127.0.0.1", "::1") and not ip.lower().startswith("fe80")}
             return {
+                "cluster": self.name,
                 "kind": g["type"],  # lxc | qemu
                 "vmid": g["vmid"], "name": g.get("name", str(g["vmid"])),
                 "node": g.get("node"), "status": g.get("status"),
@@ -195,6 +197,19 @@ class Docker:
                 "compose": (c.get("Labels") or {}).get("com.docker.compose.project", ""),
             })
         return out
+
+
+def parse_proxmox(env):
+    """PVE_URL/PVE_TOKEN/PVE_NAME und weitere Cluster als PVE_URL_2/PVE_TOKEN_2/PVE_NAME_2 … _9."""
+    out = []
+    for suffix in [""] + [f"_{i}" for i in range(2, 10)]:
+        url, token = env.get("PVE_URL" + suffix, ""), env.get("PVE_TOKEN" + suffix, "")
+        if not (url and token):
+            continue
+        insecure = env.get("PVE_INSECURE" + suffix, env.get("PVE_INSECURE", "true")).lower() in ("1", "true", "yes")
+        name = env.get("PVE_NAME" + suffix) or urllib.parse.urlparse(url).hostname or f"pve{suffix}"
+        out.append(Proxmox(url, token, insecure, name))
+    return out
 
 
 def parse_docker_hosts(spec):
