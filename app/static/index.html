@@ -4,22 +4,40 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>proxylink</title>
+<link rel="icon" href="logo.svg" type="image/svg+xml">
 <style>
   :root {
     --bg: #0f1216; --card: #171b21; --card-h: #1e232b; --line: #262c35; --chip: #20262e;
-    --text: #e6e9ee; --muted: #8a93a1; --accent: #5aa9e6;
+    --text: #e6e9ee; --muted: #8a93a1; --accent: #7b5cff;
+    --grad: linear-gradient(120deg, #ff4ecd, #7b5cff 52%, #16d9c0); --track: #262c35;
     --up: #4cb782; --warn: #e2b340; --down: #e66a5a; --unk: #6b7380; --sw: #4a525e;
   }
   @media (prefers-color-scheme: light) {
     :root { --bg: #f4f5f7; --card: #fff; --card-h: #f0f3f7; --line: #e1e4e9; --chip: #f1f3f6;
-            --text: #1a1d22; --muted: #6b7380; --accent: #1f6fb2; --sw: #c3c8d0; }
+            --text: #1a1d22; --muted: #6b7380; --accent: #6a4cf0; --sw: #c3c8d0; --track: #e6e8ec; }
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text);
          font: 15px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
   main { max-width: 1180px; margin: 0 auto; padding: 36px 20px 60px; }
   header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 22px; }
-  h1 { margin: 0; font-size: 26px; font-weight: 650; letter-spacing: -.01em; }
+  h1 { margin: 0; font-size: 26px; font-weight: 800; letter-spacing: -.03em; display: flex; align-items: center; gap: 10px; }
+  h1 img { width: 36px; height: 36px; filter: drop-shadow(0 4px 12px rgba(123,92,255,.35)); }
+  h1 .lk { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  a.btn { text-decoration: none; display: inline-block; }
+
+  /* Proxmox-Status */
+  #status { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; margin-bottom: 8px; }
+  .node { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+  .node .hd { display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 8px; }
+  .node .hd small { margin-left: auto; color: var(--muted); font-weight: 400; font-size: 12px; }
+  .bar { margin-top: 7px; font-size: 12px; color: var(--muted); }
+  .bar .row { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 3px; }
+  .bar .tr { display: block; height: 6px; border-radius: 3px; background: var(--track); overflow: hidden; }
+  .bar .fl { display: block; height: 100%; border-radius: 3px; background: var(--up); transition: width .4s; }
+  .bar .fl.warn { background: var(--warn); } .bar .fl.crit { background: var(--down); }
+  .bar .v { font-variant-numeric: tabular-nums; color: var(--text); }
+  .bar .v small { color: var(--muted); }
   #clock { color: var(--muted); font-variant-numeric: tabular-nums; }
   .spacer { flex: 1; }
   input, select { font: inherit; color: var(--text); background: var(--card); border: 1px solid var(--line);
@@ -49,7 +67,9 @@
   a.main:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
   .ic { flex: none; width: 36px; height: 36px; border-radius: 8px; display: grid; place-items: center;
         font-weight: 700; font-size: 16px; color: #fff; overflow: hidden; }
-  .ic img { width: 100%; height: 100%; object-fit: contain; }
+  .ic { position: relative; }
+  .ic img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+  .card.hid { opacity: .45; }
   .tx { min-width: 0; flex: 1; }
   .nm { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .dm { color: var(--muted); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -59,7 +79,7 @@
   .dot.up { background: var(--up); } .dot.warn { background: var(--warn); } .dot.down { background: var(--down); }
   .sw { width: 24px; height: 14px; border-radius: 7px; background: var(--sw); position: relative; }
   .sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 50%; background: #fff; }
-  .edit { position: absolute; right: 8px; top: 28px; background: none; border: 0; color: var(--muted); cursor: pointer;
+  .edit { position: absolute; right: 6px; top: 26px; background: none; border: 0; color: var(--muted); cursor: pointer;
           font-size: 14px; padding: 2px 4px; opacity: 0; transition: opacity .12s; }
   .card:hover .edit, .edit:focus-visible { opacity: 1; }
   .edit:hover { color: var(--accent); }
@@ -97,35 +117,46 @@
   dialog label { display: block; font-size: 12.5px; color: var(--muted); margin: 10px 0 4px; }
   dialog input { width: 100%; }
   dialog .row { display: flex; gap: 8px; margin-top: 18px; }
+  dialog .hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  dialog .icrow { display: flex; gap: 8px; align-items: center; }
+  dialog .icrow img { width: 34px; height: 34px; object-fit: contain; flex: none; border-radius: 6px; background: var(--chip); }
+  dialog .chk { display: flex; gap: 8px; align-items: center; margin-top: 12px; color: var(--text); font-size: 14px; }
+  dialog .chk input { width: auto; }
   dialog .err { color: var(--down); font-size: 13px; min-height: 1em; margin-top: 10px; }
 </style>
 </head>
 <body>
 <main>
   <header>
-    <h1 id="title">proxylink</h1>
+    <h1><img src="logo.svg" alt=""><span id="title"><span>proxy</span><span class="lk">link</span></span></h1>
     <span id="clock"></span>
     <span class="spacer"></span>
     <nav><button data-v="links" class="on">Links</button><button data-v="audit">Abgleich</button></nav>
+    <a class="btn" id="zoraxy" target="_blank" rel="noopener" hidden>Zoraxy ↗</a>
     <button class="btn" id="add">+ Eintrag</button>
     <input id="search" type="search" placeholder="Suchen…  ( / )" autocomplete="off">
   </header>
+  <div id="status"></div>
   <div id="view"></div>
   <div id="msg"></div>
-  <footer><span id="upd"></span> · <button id="reload">jetzt neu laden</button></footer>
+  <footer><span id="upd"></span> · <button id="reload">jetzt neu laden</button>
+    <span id="hid-wrap" hidden> · <button id="toggle-hidden"></button></span></footer>
 </main>
 
 <dialog id="dlg">
   <form id="form" method="dialog">
     <h3 id="dlg-title">Eigener Eintrag</h3>
-    <input type="hidden" name="id">
-    <label>Name *</label><input name="name" required>
-    <label>URL *</label><input name="url" required placeholder="https://… oder 192.168.10.20:8080">
+    <input type="hidden" name="id"><input type="hidden" name="key">
+    <label>Name <span class="m-custom">*</span></label><input name="name">
+    <label>URL <span class="m-custom">*</span></label><input name="url" placeholder="https://… oder 192.168.10.20:8080">
     <label>Gruppe</label><input name="group" list="groups" placeholder="Eigene">
     <datalist id="groups"></datalist>
     <label>Beschreibung</label><input name="description">
-    <label>IP:Port (optional, für Kopieren &amp; Status)</label><input name="origin" placeholder="192.168.10.20:8080">
-    <label>Icon-URL (optional)</label><input name="icon" placeholder="https://…/icon.svg">
+    <div class="m-custom"><label>IP:Port (optional, für Kopieren &amp; Status)</label><input name="origin" placeholder="192.168.10.20:8080"></div>
+    <label>Icon</label>
+    <div class="icrow"><input name="icon" placeholder="z. B. jellyfin oder https://…/icon.svg"><img id="ic-prev" alt=""></div>
+    <div class="hint">Name aus <a href="https://dashboardicons.com" target="_blank" rel="noopener">dashboardicons.com</a> oder eine Bild-URL. Leer = automatisch.</div>
+    <label class="chk m-ov"><input type="checkbox" name="hide"> Kachel ausblenden</label>
     <div id="tok-wrap" hidden><label>Bearbeitungs-Token</label><input name="token" type="password"></div>
     <div class="err" id="dlg-err"></div>
     <div class="row">
@@ -133,6 +164,7 @@
       <button class="btn" value="cancel" formnovalidate>Abbrechen</button>
       <span class="spacer"></span>
       <button class="btn danger" value="delete" id="del" formnovalidate hidden>Löschen</button>
+      <button class="btn" value="reset" id="ov-reset" formnovalidate hidden>Zurücksetzen</button>
     </div>
   </form>
 </dialog>
@@ -143,6 +175,27 @@ let D = { links: [], services: [], guests: [], containers: [], sources: {} };
 const ls = { get(k) { try { return localStorage.getItem("proxylink." + k); } catch { return null; } },
              set(k, v) { try { localStorage.setItem("proxylink." + k, v); } catch {} } };
 let view = ls.get("view") || "links";
+let showHidden = false;
+let S = null; // Proxmox-Status
+
+/* Icons: Name aus dashboard-icons, URL oder automatisch (Name/Subdomain), Fallback Buchstabe */
+const ICON_CDN = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons";
+const slug = s => String(s || "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+function iconUrls(icon, l) {
+  if (icon) return /^(https?:|\/|data:)/.test(icon) ? [icon] : [`${ICON_CDN}/svg/${slug(icon)}.svg`, `${ICON_CDN}/png/${slug(icon)}.png`];
+  if (!l) return [];
+  const names = [...new Set([slug(l.name), slug((l.domain || "").split(".")[0]), slug(l.targets?.[0]?.container?.name)].filter(Boolean))];
+  return names.flatMap(n => [`${ICON_CDN}/svg/${n}.svg`]);
+}
+function iconHTML(l) {
+  const urls = iconUrls(l.icon, l);
+  return `<span class="ic" style="background:${color(l.domain || l.name)}">${esc((l.name[0] || "?").toUpperCase())}${urls.length
+    ? `<img src="${esc(urls[0])}" data-alt="${esc(urls.slice(1).join("|"))}" alt="" loading="lazy" onload="this.parentNode.style.background='transparent'" onerror="iconFail(this)">` : ""}</span>`;
+}
+function iconFail(img) {
+  const rest = img.dataset.alt ? img.dataset.alt.split("|") : [];
+  if (rest.length) { img.dataset.alt = rest.slice(1).join("|"); img.src = rest[0]; } else img.remove();
+}
 
 function color(str) { let h = 0; for (const c of str) h = (h * 31 + c.charCodeAt(0)) % 360; return `hsl(${h} 45% 45%)`; }
 function esc(s) { return String(s ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -158,7 +211,8 @@ function targetText(l) {
     return p.join(" → ");
   }).filter(Boolean).join(" · ");
 }
-const allItems = () => [...D.links, ...(D.services || [])];
+const everything = () => [...D.links, ...(D.services || [])];
+const allItems = () => everything().filter(l => showHidden || !l.hidden);
 const matches = (l, q) => !q || [l.name, l.domain, l.group, l.description, targetText(l), ...(l.addrs || [])]
   .join(" ").toLowerCase().includes(q);
 
@@ -169,19 +223,17 @@ function cardHTML(l, idx) {
     : `<span class="dot ${l.state || ""}" title="${esc(stateWord[l.state || "unknown"])}"></span>`;
   const sub = l.unproxied ? (l.description || "kein Proxy") : (l.description || l.domain);
   return `
-  <div class="card${l.disabled ? " off" : ""}${l.unproxied ? " unp" : ""}">
+  <div class="card${l.disabled ? " off" : ""}${l.unproxied ? " unp" : ""}${l.hidden ? " hid" : ""}">
     <a class="main" href="${esc(l.url)}" target="_blank" rel="noopener">
-      <span class="ic" style="background:${l.icon ? "transparent" : color(l.domain)}">
-        ${l.icon ? `<img src="${esc(l.icon)}" alt="">` : esc((l.name[0] || "?").toUpperCase())}
-      </span>
+      ${iconHTML(l)}
       <span class="tx">
         <div class="nm">${esc(l.name)}</div>
-        <div class="dm">${esc(sub)}${l.disabled ? " · deaktiviert" : ""}</div>
+        <div class="dm">${esc(sub)}${l.disabled ? " · deaktiviert" : ""}${l.hidden ? " · ausgeblendet" : ""}</div>
         ${tgt ? `<div class="dm">${esc(tgt)}</div>` : ""}
       </span>
     </a>
     <span class="st">${status}</span>
-    ${l.custom ? `<button class="edit" data-edit="${esc(l.id)}" title="Bearbeiten">✎</button>` : ""}
+    <button class="edit" data-edit="${esc(l.custom ? "c:" + l.id : "o:" + l.key)}" title="Bearbeiten">✎</button>
     ${(l.addrs || []).length ? `<div class="addrs">${l.addrs.map(a =>
       `<button class="cp" data-copy="${esc(a)}" title="In Zwischenablage kopieren"><span>${esc(a)}</span>${COPY_ICON}</button>`).join("")}</div>` : ""}
   </div>`;
@@ -253,15 +305,52 @@ function renderAudit(q) {
   `;
 }
 
+const fmtB = b => b >= 1024 ** 4 ? (b / 1024 ** 4).toFixed(1) + " TB" : (b / 1024 ** 3).toFixed(b >= 100 * 1024 ** 3 ? 0 : 1) + " GB";
+function bar(label, p, txt, limit) {
+  const cls = limit && p >= limit ? "crit" : p >= (limit ? limit - 15 : 80) ? "warn" : "";
+  return `<div class="bar"><div class="row"><span>${label}</span><span class="v">${txt}</span></div>
+    <span class="tr"><span class="fl ${cls}" style="width:${Math.min(p, 100)}%"></span></span></div>`;
+}
+function renderStatus() {
+  const el = $("#status");
+  if (!S || (!S.nodes.length && !S.storages.length)) { el.innerHTML = ""; return; }
+  const t = S.thresholds || {};
+  const nodes = S.nodes.map(n => `
+    <div class="node">
+      <div class="hd"><span class="dot ${n.status === "online" ? "up" : "down"}"></span>${esc(n.name)}
+        <small>${n.status === "online" ? `${n.maxcpu} CPU · up ${Math.floor(n.uptime / 86400)} d` : esc(n.status)}</small></div>
+      ${n.status === "online" ? `
+      ${bar("CPU", n.cpu, `${n.cpu.toFixed(0)} %`, t.cpu)}
+      ${bar("RAM", n.mem_pct, `${n.mem_pct.toFixed(0)} % <small>${fmtB(n.mem)} / ${fmtB(n.maxmem)}</small>`, t.ram)}
+      ${bar("Disk", n.disk_pct, `${n.disk_pct.toFixed(0)} % <small>${fmtB(n.disk)} / ${fmtB(n.maxdisk)}</small>`, t.disk)}` : ""}
+    </div>`);
+  const st = S.storages.map(s => `
+    <div class="node">
+      <div class="hd"><span class="dot ${s.status === "available" ? "up" : "down"}"></span>${esc(s.path || s.id)}
+        <small>${esc(s.shared ? "shared" : s.node)}${s.path && s.id !== s.path ? " · " + esc(s.id) : ""}</small></div>
+      ${bar("Belegt", s.pct, `${s.pct.toFixed(0)} % <small>${fmtB(s.disk)} / ${fmtB(s.maxdisk)}</small>`, t.disk)}
+      <div class="bar"><div class="row"><span>Frei</span><span class="v">${fmtB(s.maxdisk - s.disk)}</span></div></div>
+    </div>`);
+  el.innerHTML = [...nodes, ...st].join("");
+}
+async function loadStatus() {
+  try { S = await (await fetch("/api/status")).json(); renderStatus(); } catch {}
+}
+
 function render() {
   const q = $("#search").value.trim().toLowerCase();
   document.querySelectorAll("nav button").forEach(b => b.classList.toggle("on", b.dataset.v === view));
   $("#view").innerHTML = view === "audit" ? renderAudit(q) : renderLinks(q);
+  const nh = everything().filter(l => l.hidden).length;
+  $("#hid-wrap").hidden = !nh;
+  $("#toggle-hidden").textContent = showHidden ? "Ausgeblendete verstecken" : `${nh} ausgeblendete anzeigen`;
 }
 
 function apply(d) {
   D = d;
-  document.title = D.title; $("#title").textContent = D.title;
+  document.title = D.title;
+  if (D.title !== "proxylink") $("#title").textContent = D.title;
+  if (D.zoraxy_url) { $("#zoraxy").href = D.zoraxy_url; $("#zoraxy").hidden = false; }
   const m = [];
   if (D.error) m.push(`<div class="err">Zoraxy-Fehler: ${esc(D.error)}</div>`);
   (D.warnings || []).forEach(w => m.push(`<div class="wrn">${esc(w)}</div>`));
@@ -291,13 +380,28 @@ async function copyText(text) {
 
 /* Dialog für eigene Einträge */
 const dlg = $("#dlg"), form = $("#form");
-function openDialog(entry) {
+let mode = "custom";
+function openDialog(entry, ovItem) {
   form.reset();
-  for (const [k, v] of Object.entries(entry || {})) if (form.elements[k]) form.elements[k].value = v ?? "";
+  mode = ovItem ? "override" : "custom";
+  if (ovItem) entry = { key: ovItem.key, ...(ovItem.ov || {}) };
+  for (const [k, v] of Object.entries(entry || {})) {
+    const el = form.elements[k]; if (!el) continue;
+    if (el.type === "checkbox") el.checked = !!v; else el.value = v ?? "";
+  }
+  document.querySelectorAll(".m-custom").forEach(e => e.hidden = mode !== "custom");
+  document.querySelectorAll(".m-ov").forEach(e => e.hidden = mode !== "override");
+  form.elements.name.required = form.elements.url.required = mode === "custom";
+  form.elements.name.placeholder = ovItem ? ovItem.name : "";
+  form.elements.url.placeholder = ovItem ? ovItem.url : "https://… oder 192.168.10.20:8080";
+  form.elements.group.placeholder = ovItem ? ovItem.group : "Eigene";
+  form.elements.description.placeholder = ovItem ? (ovItem.description || ovItem.domain) : "";
+  previewIcon(ovItem);
   form.elements.token.value = ls.get("token") || "";
   $("#tok-wrap").hidden = !D.edit_protected;
-  $("#del").hidden = !entry;
-  $("#dlg-title").textContent = entry ? "Eintrag bearbeiten" : "Eigener Eintrag";
+  $("#del").hidden = !(mode === "custom" && entry);
+  $("#ov-reset").hidden = !(mode === "override" && ovItem.ov && Object.keys(ovItem.ov).length);
+  $("#dlg-title").textContent = ovItem ? `${ovItem.name} anpassen` : entry ? "Eintrag bearbeiten" : "Eigener Eintrag";
   $("#dlg-err").textContent = "";
   $("#groups").innerHTML = [...new Set(allItems().map(l => l.group))].map(g => `<option value="${esc(g)}">`).join("");
   dlg.showModal();
@@ -319,11 +423,17 @@ form.addEventListener("submit", async e => {
   const data = Object.fromEntries(new FormData(form));
   delete data.token;
   try {
-    if (action === "delete") {
+    if (mode === "override") {
+      if (action === "reset") { apply(await send("POST", "/api/override", { key: data.key })); dlg.close(); return; }
+      data.hide = form.elements.hide.checked;
+      delete data.id; delete data.origin;
+      apply(await send("POST", "/api/override", data));
+    } else if (action === "delete") {
       if (!confirm(`„${data.name}“ löschen?`)) return;
       apply(await send("DELETE", "/api/custom/" + data.id));
     } else {
       if (!data.id) delete data.id;
+      delete data.key; delete data.hide;
       apply(await send("POST", "/api/custom", data));
     }
     dlg.close();
@@ -340,9 +450,27 @@ $("#view").addEventListener("click", async e => {
     return;
   }
   const ed = e.target.closest("[data-edit]");
-  if (ed) openDialog(D.links.find(l => l.id === ed.dataset.edit)?.raw);
+  if (ed) {
+    const [t, k] = [ed.dataset.edit.slice(0, 1), ed.dataset.edit.slice(2)];
+    if (t === "c") openDialog(D.links.find(l => l.id === k)?.raw);
+    else openDialog(null, everything().find(l => l.key === k));
+  }
 });
 $("#add").onclick = () => openDialog(null);
+function previewIcon(item) {
+  const urls = iconUrls(form.elements.icon.value.trim(), item || { name: form.elements.name.value });
+  const img = $("#ic-prev");
+  img.dataset.alt = urls.slice(1).join("|");
+  img.onerror = () => iconFail2(img);
+  if (urls[0]) { img.style.visibility = "visible"; img.src = urls[0]; } else img.style.visibility = "hidden";
+}
+function iconFail2(img) {
+  const rest = img.dataset.alt ? img.dataset.alt.split("|") : [];
+  if (rest.length) { img.dataset.alt = rest.slice(1).join("|"); img.src = rest[0]; } else img.style.visibility = "hidden";
+}
+let prevT;
+form.elements.icon.addEventListener("input", () => { clearTimeout(prevT); prevT = setTimeout(() => previewIcon(), 300); });
+$("#toggle-hidden").onclick = () => { showHidden = !showHidden; render(); };
 document.querySelectorAll("nav button").forEach(b => b.onclick = () => { view = b.dataset.v; ls.set("view", view); render(); });
 $("#search").addEventListener("input", render);
 $("#search").addEventListener("keydown", e => {
@@ -357,6 +485,7 @@ $("#reload").onclick = () => load("/api/refresh");
 const tick = () => $("#clock").textContent = new Date().toLocaleString("de-DE", { weekday: "long", day: "2-digit", month: "long", hour: "2-digit", minute: "2-digit" });
 tick(); setInterval(tick, 10000);
 load(); setInterval(load, 30000);
+loadStatus(); setInterval(loadStatus, 15000);
 </script>
 </body>
 </html>

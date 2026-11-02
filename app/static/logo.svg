@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="pl-g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ff4ecd"/>
+      <stop offset=".52" stop-color="#7b5cff"/>
+      <stop offset="1" stop-color="#16d9c0"/>
+    </linearGradient>
+    <radialGradient id="pl-shine" cx=".25" cy=".15" r=".8">
+      <stop offset="0" stop-color="#fff" stop-opacity=".35"/>
+      <stop offset=".6" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="pl-bottom"><rect x="-20" y="32" width="104" height="60"/></clipPath>
+    <clipPath id="pl-top"><rect x="-20" y="-28" width="104" height="60"/></clipPath>
+    <!-- Glied 1 wird unten von Glied 2 überdeckt, Glied 2 oben von Glied 1 → ineinandergreifend -->
+    <mask id="pl-m1" maskUnits="userSpaceOnUse" x="-20" y="-20" width="104" height="104">
+      <rect x="-20" y="-20" width="104" height="104" fill="#fff"/>
+      <rect x="28.5" y="24" width="25" height="16" rx="8" fill="none" stroke="#000" stroke-width="11" clip-path="url(#pl-bottom)"/>
+    </mask>
+    <mask id="pl-m2" maskUnits="userSpaceOnUse" x="-20" y="-20" width="104" height="104">
+      <rect x="-20" y="-20" width="104" height="104" fill="#fff"/>
+      <rect x="10.5" y="24" width="25" height="16" rx="8" fill="none" stroke="#000" stroke-width="11" clip-path="url(#pl-top)"/>
+    </mask>
+  </defs>
+  <rect width="64" height="64" rx="17" fill="url(#pl-g)"/>
+  <rect width="64" height="64" rx="17" fill="url(#pl-shine)"/>
+  <g transform="rotate(-45 32 32)" fill="none" stroke="#fff" stroke-width="5">
+    <rect x="10.5" y="24" width="25" height="16" rx="8" mask="url(#pl-m1)"/>
+    <rect x="28.5" y="24" width="25" height="16" rx="8" mask="url(#pl-m2)"/>
+  </g>
+  <circle cx="50" cy="50" r="3.2" fill="#fff"/>
+  <circle cx="14" cy="14" r="2.2" fill="#fff" opacity=".75"/>
+</svg>

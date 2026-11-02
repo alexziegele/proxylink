@@ -19,11 +19,12 @@ import urllib.request
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 from sources import Proxmox, parse_docker_hosts
+from monitor import Monitor, telegram
 
 log = logging.getLogger("proxylink")
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(message)s")
 
-ZORAXY_URL = os.getenv("ZORAXY_URL", "http://zoraxy:8000").rstrip("/")
+ZORAXY_URL = os.getenv("ZORAXY_URL", "http://192.168.60.199:8000").rstrip("/")
 ZORAXY_USER = os.getenv("ZORAXY_USER", "")
 ZORAXY_PASS = os.getenv("ZORAXY_PASS", "")
 ZORAXY_INSECURE = os.getenv("ZORAXY_INSECURE", "false").lower() in ("1", "true", "yes")
@@ -111,15 +112,47 @@ class ZoraxyClient:
         return data or []
 
 
-def load_overrides():
+def _read_json(path, default):
     try:
-        with open(OVERRIDES_FILE, encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             return json.load(f)
     except FileNotFoundError:
-        return {}
+        return default
     except Exception as e:
-        log.warning("overrides.json nicht lesbar: %s", e)
-        return {}
+        log.warning("%s nicht lesbar: %s", path, e)
+        return default
+
+
+def load_overrides():
+    """/config/overrides.json (Datei) + /data/overrides.json (per UI bearbeitet, hat Vorrang)."""
+    ov = {k: dict(v) for k, v in _read_json(OVERRIDES_FILE, {}).items()}
+    for k, v in _read_json(os.path.join(DATA_DIR, "overrides.json"), {}).items():
+        ov.setdefault(k, {}).update(v)
+    return ov
+
+
+OVERRIDE_FIELDS = ("name", "icon", "group", "description", "url")
+_ov_lock = threading.Lock()
+
+
+def save_override(data):
+    key = str(data.get("key", "")).strip()
+    if not key:
+        raise ValueError("key fehlt")
+    e = {k: str(data.get(k, "")).strip()[:500] for k in OVERRIDE_FIELDS if str(data.get(k, "")).strip()}
+    if data.get("hide"):
+        e["hide"] = True
+    path = os.path.join(DATA_DIR, "overrides.json")
+    with _ov_lock:
+        ov = _read_json(path, {})
+        if e:
+            ov[key] = e
+        else:
+            ov.pop(key, None)
+        os.makedirs(DATA_DIR, exist_ok=True)
+        with open(path + ".tmp", "w", encoding="utf-8") as f:
+            json.dump(ov, f, indent=2, ensure_ascii=False)
+        os.replace(path + ".tmp", path)
 
 
 def to_links(hosts):
@@ -135,8 +168,6 @@ def to_links(hosts):
         if any(x in domain.lower() for x in EXCLUDE):
             continue
         o = ov.get(domain, {})
-        if o.get("hide"):
-            continue
         # Wildcards wie *.example.com sind keine klickbaren Links
         if "*" in domain:
             continue
@@ -146,6 +177,7 @@ def to_links(hosts):
             origins = [{"addr": h["Domain"], "tls": bool(h.get("RequireTLS"))}]
         tags = h.get("Tags") or []
         links.append({
+            "key": domain, "hidden": bool(o.get("hide")), "ov": o,
             "domain": domain,
             "name": o.get("name") or domain.split(".")[0].replace("-", " ").title(),
             "url": o.get("url") or f"{LINK_SCHEME}://{domain}",
@@ -220,7 +252,7 @@ def custom_links():
             "name": c["name"], "url": c["url"], "group": c.get("group") or "Eigene",
             "icon": c.get("icon", ""), "description": c.get("description", ""),
             "origins": [{"addr": addr, "tls": tls}] if addr else [],
-            "aliases": [], "disabled": False, "raw": c,
+            "aliases": [], "disabled": False, "raw": c, "hidden": False,
         })
     return out
 
@@ -334,11 +366,11 @@ def discover(links, guests, containers):
         ports = [p for p in ports if (ip, p) not in routed]
         addrs = [f"{ip}:{p}" for p in ports]
         o = next((ov[k] for k in [name, *addrs] if k in ov), {})
-        if not ports or o.get("hide"):
+        if not ports:
             return
         p = ports[0]
         svc.append({
-            "unproxied": True, "domain": addrs[0], "name": o.get("name") or name,
+            "unproxied": True, "key": name, "hidden": bool(o.get("hide")), "ov": o, "domain": addrs[0], "name": o.get("name") or name,
             "url": o.get("url") or f"{'https' if p in HTTPS_PORTS else 'http'}://{ip}:{p}",
             "group": o.get("group") or "Ohne Proxy", "icon": o.get("icon", ""),
             "description": o.get("description") or desc, "addrs": addrs, "origins": [],
@@ -429,11 +461,12 @@ class Cache:
         with self.lock:
             return {"title": TITLE, "links": self.links, "error": self.error, "updated": self.updated,
                     "warnings": self.warnings, "services": self.services,
-                    "edit_protected": bool(EDIT_TOKEN), "guests": self.guests, "containers": self.containers,
+                    "edit_protected": bool(EDIT_TOKEN), "zoraxy_url": ZORAXY_URL, "guests": self.guests, "containers": self.containers,
                     "sources": {"proxmox": bool(self.pve), "docker": [d.name for d in self.dockers]}}
 
 
 CACHE = Cache()
+MONITOR = Monitor(CACHE.pve)
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -455,6 +488,11 @@ class Handler(SimpleHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/api/links":
             return self._json(CACHE.snapshot())
+        if self.path == "/api/status":
+            return self._json(MONITOR.snapshot())
+        if self.path == "/api/telegram-test":
+            ok = telegram(f"👋 <b>{TITLE}</b>: Telegram-Test erfolgreich")
+            return self._json({"ok": ok}, 200 if ok else 500)
         if self.path == "/api/refresh":
             CACHE.refresh()
             return self._json(CACHE.snapshot())
@@ -469,13 +507,14 @@ class Handler(SimpleHTTPRequestHandler):
         return True
 
     def do_POST(self):
-        if self.path != "/api/custom":
+        handlers = {"/api/custom": upsert_custom, "/api/override": save_override}
+        if self.path not in handlers:
             return self._json({"error": "not found"}, 404)
         if not self._authorized():
             return
         try:
             n = min(int(self.headers.get("Content-Length", 0)), 20000)
-            upsert_custom(json.loads(self.rfile.read(n) or b"{}"))
+            handlers[self.path](json.loads(self.rfile.read(n) or b"{}"))
         except (ValueError, json.JSONDecodeError) as e:
             return self._json({"error": str(e)}, 400)
         except OSError as e:
@@ -496,5 +535,6 @@ class Handler(SimpleHTTPRequestHandler):
 
 if __name__ == "__main__":
     threading.Thread(target=CACHE.loop, daemon=True).start()
+    threading.Thread(target=MONITOR.loop, daemon=True).start()
     log.info("proxylink läuft auf Port %d", PORT)
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()

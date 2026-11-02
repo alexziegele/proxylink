@@ -87,6 +87,41 @@ class Proxmox:
             pass  # kein Guest-Agent / keine Rechte
         return ips
 
+    def status(self, wanted=()):
+        """Nodes (CPU/RAM/Root-Disk) + ausgewählte Storages (per ID oder Pfad, z. B. /mnt/share)."""
+        res = self._get("/cluster/resources")
+        nodes = [{
+            "name": r["node"], "status": r.get("status", "unknown"),
+            "cpu": round(r.get("cpu", 0) * 100, 1), "maxcpu": r.get("maxcpu", 0),
+            "mem": r.get("mem", 0), "maxmem": r.get("maxmem", 0),
+            "disk": r.get("disk", 0), "maxdisk": r.get("maxdisk", 0),
+            "uptime": r.get("uptime", 0),
+        } for r in res if r.get("type") == "node"]
+        nodes.sort(key=lambda n: n["name"])
+
+        storages = []
+        if wanted:
+            try:
+                paths = {s["storage"]: s.get("path", "") for s in self._get("/storage")}
+            except Exception:
+                paths = {}
+            seen = set()
+            for r in res:
+                if r.get("type") != "storage":
+                    continue
+                sid = r["storage"]
+                if sid not in wanted and paths.get(sid) not in wanted:
+                    continue
+                if r.get("shared") and sid in seen:  # Shared Storage nur einmal
+                    continue
+                seen.add(sid)
+                storages.append({
+                    "id": sid, "path": paths.get(sid, ""), "node": r.get("node"),
+                    "shared": bool(r.get("shared")), "status": r.get("status", ""),
+                    "disk": r.get("disk", 0), "maxdisk": r.get("maxdisk", 0),
+                })
+        return nodes, storages
+
     def guests(self):
         items = [g for g in self._get("/cluster/resources?type=vm") if g.get("template", 0) != 1]
 

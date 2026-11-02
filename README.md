@@ -1,3 +1,5 @@
+<p align="center"><img src="app/static/logo.svg" width="96" alt="proxylink"></p>
+
 # proxylink
 
 Kleine Startseite fürs Homelab: holt alle HTTP-Proxy-Regeln aus **Zoraxy** und zeigt sie als Links an.
@@ -9,6 +11,9 @@ Jede Route wird bis zum Ziel verfolgt und mit **Proxmox** (LXC + VMs) und **Dock
 - **Ohne Proxy**: laufende Dienste ohne Zoraxy-Route (Container mit veröffentlichten Ports, offene Ports auf Proxmox-Gästen) erscheinen als gestrichelte Kacheln
 - In Zoraxy deaktivierte Proxies werden ausgegraut und mit Aus-Schalter markiert
 - Unter jeder Kachel `ip:port` zum Kopieren
+- **Proxmox-Status** oben: alle Nodes mit CPU, RAM, Root-Disk + ausgewählte Storages (z. B. `/mnt/share`)
+- **Telegram-Alarme**, wenn CPU/RAM (optional Disk) eine Grenze für eine Weile überschreiten, plus Entwarnung und Node-offline-Meldung
+- **Jede Kachel anpassbar** (✎): Name, Icon, Gruppe, Beschreibung, URL, ausblenden. Icons per Name aus [dashboardicons.com](https://dashboardicons.com) oder URL, ohne Angabe wird automatisch nach Name/Subdomain gesucht
 - **Eigene Einträge** über „+ Eintrag“ (bearbeiten per ✎ auf der Kachel), gespeichert im Volume `/data/custom.json`
 - Suche mit `/`, `Enter` öffnet den ersten Treffer
 - Nur Python-Standardbibliothek, Image ~50 MB, alle Quellen nur lesend
@@ -38,6 +43,13 @@ Dann `http://<host>:8080` öffnen.
 | `SHOW_DISABLED` | deaktivierte Regeln mit anzeigen (Standard `true`) |
 | `SHOW_UNPROXIED` | Dienste ohne Proxy-Route anzeigen (Standard `true`) |
 | `PROBE_PORTS` | Ports, die auf Proxmox-Gästen ohne Route geprüft werden |
+| `PVE_STORAGES` | Storages für die Statusleiste (ID oder Pfad), Standard `/mnt/share` |
+| `LOCAL_DISKS` | zusätzlich in den Container gemountete Pfade `name=/pfad` |
+| `TELEGRAM_TOKEN` / `TELEGRAM_CHAT_ID` | Bot-Token und Chat für Alarme |
+| `ALERT_CPU` / `ALERT_RAM` / `ALERT_DISK` | Grenzen in %, `0` = aus (Standard 90 / 90 / 90) |
+| `ALERT_MINUTES` | Dauer über der Grenze, bevor gemeldet wird (Standard 2) |
+| `ALERT_HYSTERESIS` | Entwarnung erst X % unter der Grenze (Standard 5) |
+| `ALERT_REPEAT_MINUTES` | Erinnerung, solange es anhält (Standard 0 = nie) |
 | `EDIT_TOKEN` | optional: Token, ohne den keine eigenen Einträge angelegt/gelöscht werden können |
 | `EXCLUDE` | Domains mit diesen Teilstrings ausblenden, kommagetrennt |
 | `REFRESH_SECONDS` | Abrufintervall (Standard 60) |
@@ -88,6 +100,23 @@ IPs von `lo`, `docker*`, `br-*`, `veth*` usw. werden bei Gästen ignoriert.
 
 Ohne Override ist die Gruppe der erste Zoraxy-Tag (sonst „Allgemein“).
 
+## Speicher /mnt/share
+
+Die Statusleiste liest Storages über die Proxmox-API. `/mnt/share` erscheint, wenn es unter **Datacenter → Storage** als Storage
+(z. B. Typ *Directory*) mit diesem Pfad eingetragen ist; `PVE_STORAGES` akzeptiert Pfad oder Storage-ID.
+Ist es dort nicht eingetragen, kannst du den Pfad in den proxylink-Container mounten (`- /mnt/share:/mnt/share:ro`)
+und `LOCAL_DISKS=share=/mnt/share` setzen.
+
+## Telegram
+
+1. Bei [@BotFather](https://t.me/BotFather) einen Bot anlegen → Token
+2. Dem Bot einmal schreiben, Chat-ID z. B. über [@userinfobot](https://t.me/userinfobot) herausfinden
+3. `TELEGRAM_TOKEN` + `TELEGRAM_CHAT_ID` in `.env`, neu starten
+4. Test: `http://<host>:8080/api/telegram-test`
+
+Ein Alarm kommt einmal, wenn der Wert `ALERT_MINUTES` lang über der Grenze liegt, und eine Entwarnung, sobald er
+`ALERT_HYSTERESIS` Prozentpunkte darunter fällt. Kurze Spitzen lösen nichts aus.
+
 ## Dienste ohne Proxy
 
 - **Docker:** laufende Container mit veröffentlichten Ports, deren `host-ip:port` von keiner Route genutzt wird
@@ -102,4 +131,7 @@ Hinweis: Kopieren in die Zwischenablage funktioniert auch über `http://`, im Br
 - `GET /api/refresh` – sofort neu abrufen
 - `POST /api/custom` – eigenen Eintrag anlegen/ändern (JSON: `name`, `url`, `group`, `description`, `origin`, `icon`, bei Änderung `id`)
 - `DELETE /api/custom/<id>`
+- `POST /api/override` – Anpassung einer Kachel (JSON: `key` + `name`, `icon`, `group`, `description`, `url`, `hide`; nur `key` = zurücksetzen)
+- `GET /api/status` – Proxmox-Nodes und Storages
+- `GET /api/telegram-test`
 - `GET /health`
